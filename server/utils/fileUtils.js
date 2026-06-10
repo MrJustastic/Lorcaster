@@ -303,7 +303,7 @@ module.exports.downloadFile = (url, filepath, contentTypeFilter = null) => {
       method: 'GET',
       responseType: 'stream',
       headers: {
-        'User-Agent': 'audiobookshelf (+https://audiobookshelf.org)'
+        'User-Agent': 'lorcaster (+https://github.com/MrJustastic/Lorcaster)'
       },
       timeout: 30000,
       httpAgent: global.DisableSsrfRequestFilter?.(url) ? null : ssrfFilter(url),

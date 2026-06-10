@@ -131,10 +131,10 @@ class BackupManager {
       return res.status(400).send('Failed to read backup file - backup might not be a valid .zip file')
     }
     if (!entries['absdatabase.sqlite']) {
-      Logger.error(`[BackupManager] Invalid backup with no absdatabase.sqlite file - might be a backup created on an old Audiobookshelf server.`)
+      Logger.error(`[BackupManager] Invalid backup with no absdatabase.sqlite file - might be a backup created on an old Audiobookshelf or Lorcaster server.`)
       await zip.close().catch(() => {})
       await fs.remove(tempPath).catch((err) => Logger.error(`[BackupManager] Failed to remove rejected backup file "${tempPath}"`, err))
-      return res.status(500).send('Invalid backup with no absdatabase.sqlite file - might be a backup created on an old Audiobookshelf server.')
+      return res.status(500).send('Invalid backup with no absdatabase.sqlite file - might be a backup created on an old Audiobookshelf or Lorcaster server.')
     }
 
     const detailsEntry = entries['details']
@@ -208,7 +208,7 @@ class BackupManager {
     if (!Object.keys(entries).includes('absdatabase.sqlite')) {
       Logger.error(`[BackupManager] Cannot apply old backup ${backup.fullPath}`)
       await zip.close()
-      return res.status(500).send('Invalid backup file. Does not include absdatabase.sqlite. This might be from an older Audiobookshelf server.')
+      return res.status(500).send('Invalid backup file. Does not include absdatabase.sqlite. This might be from an older Audiobookshelf or Lorcaster server.')
     }
 
     await Database.disconnect()
@@ -272,7 +272,7 @@ class BackupManager {
 
       for (let i = 0; i < filesInDir.length; i++) {
         const filename = filesInDir[i]
-        if (filename.endsWith('.audiobookshelf')) {
+        if (filename.endsWith('.audiobookshelf')) {  // .audiobookshelf is the legacy backup file format (kept for compatibility)
           const fullFilePath = Path.join(this.backupPath, filename)
 
           let zip = null

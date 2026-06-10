@@ -1,5 +1,5 @@
 //
-// modified for use in audiobookshelf
+// modified for use in Lorcaster (fork of Audiobookshelf)
 // Source: https://github.com/auth0/node-jsonwebtoken
 //
 

@@ -1,7 +1,7 @@
 'use strict';
 
 //
-// modified for use in audiobookshelf (removed camelCase opt)
+// modified for use in Lorcaster (fork of Audiobookshelf; removed camelCase opt)
 // Source: https://github.com/75lb/command-line-args
 //
 

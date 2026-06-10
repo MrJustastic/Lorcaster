@@ -109,7 +109,7 @@ module.exports.downloadPodcastEpisode = (podcastEpisodeDownload) => {
     // Some podcasts fail due to user agent strings
     // See: https://github.com/advplyr/audiobookshelf/issues/3246 (requires iTMS user agent)
     // See: https://github.com/advplyr/audiobookshelf/issues/4401 (requires no iTMS user agent)
-    const userAgents = ['audiobookshelf (+https://audiobookshelf.org; like iTMS)', 'audiobookshelf (+https://audiobookshelf.org)']
+    const userAgents = ['lorcaster (+https://github.com/MrJustastic/Lorcaster; like iTMS)', 'lorcaster (+https://github.com/MrJustastic/Lorcaster)']
 
     let response = null
     let lastError = null

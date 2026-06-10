@@ -7,7 +7,7 @@ class MusicBrainz {
   constructor() { }
 
   get userAgentString() {
-    return `audiobookshelf/${packageJson.version} (https://audiobookshelf.org)`
+    return `lorcaster/${packageJson.version} (https://github.com/MrJustastic/Lorcaster)`
   }
 
   // https://musicbrainz.org/doc/MusicBrainz_API/Search

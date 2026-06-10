@@ -3,7 +3,7 @@
   SOURCE: https://github.com/apostrophecms/sanitize-html
   LICENSE: https://github.com/apostrophecms/sanitize-html/blob/main/LICENSE
 
-  Modified for audiobookshelf
+  Modified for Lorcaster (fork of Audiobookshelf)
 */
 
 const htmlparser = require('htmlparser2');

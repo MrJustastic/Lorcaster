@@ -37,7 +37,7 @@ if (isDev || options['prod-with-dev-env']) {
       : String(devEnv.AllowedDevOrigins)
   }
   process.env.SOURCE = 'local'
-  process.env.ROUTER_BASE_PATH = devEnv.RouterBasePath ?? '/audiobookshelf'
+  process.env.ROUTER_BASE_PATH = devEnv.RouterBasePath ?? '/lorcaster'
 }
 
 const inputConfig = options.config ? Path.resolve(options.config) : null
@@ -49,7 +49,7 @@ const CONFIG_PATH = inputConfig || process.env.CONFIG_PATH || Path.resolve('conf
 const METADATA_PATH = inputMetadata || process.env.METADATA_PATH || Path.resolve('metadata')
 const SOURCE = options.source || process.env.SOURCE || 'debian'
 
-const ROUTER_BASE_PATH = process.env.ROUTER_BASE_PATH ?? '/audiobookshelf'
+const ROUTER_BASE_PATH = process.env.ROUTER_BASE_PATH ?? '/lorcaster'
 
 console.log(`Running in ${process.env.NODE_ENV} mode.`)
 console.log(`Options: CONFIG_PATH=${CONFIG_PATH}, METADATA_PATH=${METADATA_PATH}, PORT=${PORT}, HOST=${HOST}, SOURCE=${SOURCE}, ROUTER_BASE_PATH=${ROUTER_BASE_PATH}`)

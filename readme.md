@@ -1,6 +1,6 @@
 <br />
 <div align="center">
-   <img alt="Audiobookshelf Banner" src="https://github.com/advplyr/audiobookshelf/raw/master/images/banner.svg" width="600">
+   <img alt="Lorcaster Banner" src="https://github.com/MrJustastic/Lorcaster/raw/main/images/banner.svg" width="600">
 
   <p align="center">
     <br />
@@ -12,9 +12,17 @@
   </p>
 </div>
 
+> **Lorcaster** is a personal fork of the original [Audiobookshelf](https://github.com/advplyr/audiobookshelf) project.
+> 
+> Most features, documentation, and the companion mobile apps are from the upstream project. This fork primarily rebrands the UI, changes the default subfolder path to `/lorcaster`, and is intended for personal/custom deployments.
+> 
+> - Original docs: [audiobookshelf.org/docs](https://audiobookshelf.org/docs)
+> - Upstream issues/features: report to the [original repo](https://github.com/advplyr/audiobookshelf) unless specific to this fork.
+> - Your fork repo: [github.com/MrJustastic/Lorcaster](https://github.com/MrJustastic/Lorcaster)
+
 # About
 
-Audiobookshelf is a self-hosted audiobook and podcast server.
+Lorcaster is a self-hosted audiobook and podcast server (a fork of the original Audiobookshelf project).
 
 ### Features
 
@@ -69,9 +77,9 @@ Check out the [API documentation](https://api.audiobookshelf.org/)
 
 # Organizing your audiobooks
 
-#### Directory structure and folder names are important to Audiobookshelf!
+#### Directory structure and folder names are important to Lorcaster!
 
-See [documentation](https://audiobookshelf.org/docs#book-directory-structure) for supported directory structure, folder naming conventions, and audio file metadata usage.
+See [documentation](https://audiobookshelf.org/docs#book-directory-structure) for supported directory structure, folder naming conventions, and audio file metadata usage. (This is a fork — the core behavior is the same as the original Audiobookshelf project.)
 
 <br />
 
@@ -83,9 +91,9 @@ See [install docs](https://www.audiobookshelf.org/docs)
 
 # Reverse Proxy Set Up
 
-#### Important! Audiobookshelf requires a websocket connection.
+#### Important! Lorcaster (like the original Audiobookshelf) requires a websocket connection.
 
-#### Note: Using a subfolder is supported with no additional changes but the path must be `/audiobookshelf` (this is not changeable). See [discussion](https://github.com/advplyr/audiobookshelf/discussions/3535)
+#### Note: Using a subfolder is supported. The default path is now `/lorcaster` (configurable via the `ROUTER_BASE_PATH` environment variable or in `dev.js`). See the original discussion for details: [discussion](https://github.com/advplyr/audiobookshelf/discussions/3535)
 
 ### NGINX Proxy Manager
 
@@ -102,8 +110,8 @@ server {
    listen 443 ssl;
    server_name <sub>.<domain>.<tld>;
 
-   access_log /var/log/nginx/audiobookshelf.access.log;
-   error_log /var/log/nginx/audiobookshelf.error.log;
+   access_log /var/log/nginx/lorcaster.access.log;
+   error_log /var/log/nginx/lorcaster.error.log;
 
    ssl_certificate      /path/to/certificate;
    ssl_certificate_key  /path/to/key;
@@ -167,10 +175,10 @@ For this to work you must enable at least the following mods using `a2enmod`:
 If using Apache >= 2.4.47 you can use the following, without having to use any of the `RewriteEngine`, `RewriteCond`, or `RewriteRule` directives. For example:
 
 ```xml
-    <Location /audiobookshelf>
+    <Location /lorcaster>
         ProxyPreserveHost on
-        ProxyPass http://localhost:<audiobookshelf_port>/audiobookshelf upgrade=websocket
-        ProxyPassReverse http://localhost:<audiobookshelf_port>/audiobookshelf
+        ProxyPass http://localhost:<lorcaster_port>/lorcaster upgrade=websocket
+        ProxyPassReverse http://localhost:<lorcaster_port>/lorcaster
     </Location>
 ```
 

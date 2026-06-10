@@ -44,7 +44,7 @@ module.exports.generate = (podcasts, indent = true) => {
         {
           head: [
             {
-              title: 'Audiobookshelf Podcast Subscriptions'
+              title: 'Lorcaster Podcast Subscriptions'
             }
           ]
         },

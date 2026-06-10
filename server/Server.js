@@ -217,7 +217,8 @@ class Server {
   }
 
   async start() {
-    Logger.info('=== Starting Server ===')
+    Logger.info('=== Starting Lorcaster ===')
+    Logger.info('[Lorcaster] First code change test — nodemon restart works!')
 
     this.initProcessEventListeners()
     await this.init()
@@ -349,7 +350,7 @@ class Server {
       // status check for client to see if server has been initialized
       // server has been initialized if a root user exists
       const payload = {
-        app: 'audiobookshelf',
+        app: 'lorcaster',
         serverVersion: version,
         isInit: Database.hasRootUser,
         language: Database.serverSettings.language,

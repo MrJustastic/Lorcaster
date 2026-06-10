@@ -2,7 +2,7 @@
 'use strict';
 
 //
-// modified for use with audiobookshelf
+// modified for use with Lorcaster (fork of Audiobookshelf)
 // Source: https://github.com/fluent-ffmpeg/node-fluent-ffmpeg
 //
 

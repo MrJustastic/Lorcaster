@@ -1,5 +1,5 @@
 //
-// node-ffprobe modified for audiobookshelf
+// node-ffprobe modified for Lorcaster (fork of Audiobookshelf)
 // SOURCE: https://github.com/ListenerApproved/node-ffprobe
 //
 

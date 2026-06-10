@@ -25,7 +25,7 @@ class EmailManager {
     transporter.sendMail({
       from: Database.emailSettings.fromAddress,
       to: Database.emailSettings.testAddress || Database.emailSettings.fromAddress,
-      subject: 'Test email from Audiobookshelf',
+      subject: 'Test email from Lorcaster',
       text: 'Success!'
     }).then((result) => {
       Logger.info(`[EmailManager] Test email sent successfully`, result)

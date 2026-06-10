@@ -123,7 +123,7 @@ class MigrationManager {
         await fs.move(backupDbPath, originalDbPath, { overwrite: true })
         Logger.info('[MigrationManager] Restored the original database from the backup.')
 
-        Logger.info('[MigrationManager] Migration failed. Exiting Audiobookshelf with code 1.')
+        Logger.info('[MigrationManager] Migration failed. Exiting Lorcaster with code 1.')
         process.exit(1)
       }
     } else {

@@ -1,5 +1,5 @@
 //
-// modified for audiobookshelf
+// modified for Lorcaster (fork of Audiobookshelf)
 // Source: https://github.com/jaredhanson/passport-local
 //
 

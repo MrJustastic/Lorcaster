@@ -97,11 +97,11 @@
 		<text
    transform="translate(1492.27,735.42)"
    class="st2 st3 st4"
-   id="text96">audiobookshelf</text>
+   id="text96">Lorcaster</text>
 		<text
    id="self-hosted_audiobook_and_podcast_server"
    transform="translate(1492.27,1103.6899)"
-   class="st5 st6 st7">self-hosted audiobook and podcast server</text>
+   class="st5 st6 st7">a personal fork of Audiobookshelf</text>
 	</g>
 </g>
 <metadata
