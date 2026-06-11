@@ -24,3 +24,13 @@ sw.*
 .idea/*
 tailwind.compiled.css
 tailwind.config.js
+
+# Native macOS SwiftUI app (LorcasterMac/)
+LorcasterMac/**/.build/
+LorcasterMac/**/build/
+LorcasterMac/**/DerivedData/
+LorcasterMac/**/*.xcodeproj/project.xcworkspace/
+LorcasterMac/**/*.xcodeproj/xcuserdata/
+LorcasterMac/**/.swiftpm/
+LorcasterMac/**/.DS_Store
+LorcasterMac/**/xcuserdata/

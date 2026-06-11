@@ -1,0 +1,642 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		D04543462FDA26190036EEF5 /* LorcasterPlayer in Frameworks */ = {isa = PBXBuildFile; productRef = D04543452FDA26190036EEF5 /* LorcasterPlayer */; };
+		D04543482FDA26190036EEF5 /* LorcasterServer in Frameworks */ = {isa = PBXBuildFile; productRef = D04543472FDA26190036EEF5 /* LorcasterServer */; };
+		D045434A2FDA26190036EEF5 /* LorcasterCore in Frameworks */ = {isa = PBXBuildFile; productRef = D04543492FDA26190036EEF5 /* LorcasterCore */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		D04543172FDA240C0036EEF5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D04542FF2FDA240A0036EEF5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D04543062FDA240A0036EEF5;
+			remoteInfo = Lorcaster;
+		};
+		D04543212FDA240C0036EEF5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D04542FF2FDA240A0036EEF5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D04543062FDA240A0036EEF5;
+			remoteInfo = Lorcaster;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		D04543072FDA240A0036EEF5 /* Lorcaster.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Lorcaster.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D04543162FDA240C0036EEF5 /* LorcasterTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LorcasterTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D04543202FDA240C0036EEF5 /* LorcasterUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LorcasterUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		D04543092FDA240A0036EEF5 /* Lorcaster */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Lorcaster;
+			sourceTree = "<group>";
+		};
+		D04543192FDA240C0036EEF5 /* LorcasterTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = LorcasterTests;
+			sourceTree = "<group>";
+		};
+		D04543232FDA240C0036EEF5 /* LorcasterUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = LorcasterUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		D04543042FDA240A0036EEF5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D045434A2FDA26190036EEF5 /* LorcasterCore in Frameworks */,
+				D04543462FDA26190036EEF5 /* LorcasterPlayer in Frameworks */,
+				D04543482FDA26190036EEF5 /* LorcasterServer in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D04543132FDA240C0036EEF5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D045431D2FDA240C0036EEF5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		D04542FE2FDA240A0036EEF5 = {
+			isa = PBXGroup;
+			children = (
+				D04543092FDA240A0036EEF5 /* Lorcaster */,
+				D04543192FDA240C0036EEF5 /* LorcasterTests */,
+				D04543232FDA240C0036EEF5 /* LorcasterUITests */,
+				D04543442FDA26190036EEF5 /* Frameworks */,
+				D04543082FDA240A0036EEF5 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		D04543082FDA240A0036EEF5 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				D04543072FDA240A0036EEF5 /* Lorcaster.app */,
+				D04543162FDA240C0036EEF5 /* LorcasterTests.xctest */,
+				D04543202FDA240C0036EEF5 /* LorcasterUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		D04543442FDA26190036EEF5 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		D04543062FDA240A0036EEF5 /* Lorcaster */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D045432A2FDA240C0036EEF5 /* Build configuration list for PBXNativeTarget "Lorcaster" */;
+			buildPhases = (
+				D04543032FDA240A0036EEF5 /* Sources */,
+				D04543042FDA240A0036EEF5 /* Frameworks */,
+				D04543052FDA240A0036EEF5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				D04543092FDA240A0036EEF5 /* Lorcaster */,
+			);
+			name = Lorcaster;
+			packageProductDependencies = (
+				D04543452FDA26190036EEF5 /* LorcasterPlayer */,
+				D04543472FDA26190036EEF5 /* LorcasterServer */,
+				D04543492FDA26190036EEF5 /* LorcasterCore */,
+			);
+			productName = Lorcaster;
+			productReference = D04543072FDA240A0036EEF5 /* Lorcaster.app */;
+			productType = "com.apple.product-type.application";
+		};
+		D04543152FDA240C0036EEF5 /* LorcasterTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D045432D2FDA240C0036EEF5 /* Build configuration list for PBXNativeTarget "LorcasterTests" */;
+			buildPhases = (
+				D04543122FDA240C0036EEF5 /* Sources */,
+				D04543132FDA240C0036EEF5 /* Frameworks */,
+				D04543142FDA240C0036EEF5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				D04543182FDA240C0036EEF5 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				D04543192FDA240C0036EEF5 /* LorcasterTests */,
+			);
+			name = LorcasterTests;
+			packageProductDependencies = (
+			);
+			productName = LorcasterTests;
+			productReference = D04543162FDA240C0036EEF5 /* LorcasterTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		D045431F2FDA240C0036EEF5 /* LorcasterUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D04543302FDA240C0036EEF5 /* Build configuration list for PBXNativeTarget "LorcasterUITests" */;
+			buildPhases = (
+				D045431C2FDA240C0036EEF5 /* Sources */,
+				D045431D2FDA240C0036EEF5 /* Frameworks */,
+				D045431E2FDA240C0036EEF5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				D04543222FDA240C0036EEF5 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				D04543232FDA240C0036EEF5 /* LorcasterUITests */,
+			);
+			name = LorcasterUITests;
+			packageProductDependencies = (
+			);
+			productName = LorcasterUITests;
+			productReference = D04543202FDA240C0036EEF5 /* LorcasterUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		D04542FF2FDA240A0036EEF5 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2650;
+				LastUpgradeCheck = 2650;
+				TargetAttributes = {
+					D04543062FDA240A0036EEF5 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+					D04543152FDA240C0036EEF5 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = D04543062FDA240A0036EEF5;
+					};
+					D045431F2FDA240C0036EEF5 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = D04543062FDA240A0036EEF5;
+					};
+				};
+			};
+			buildConfigurationList = D04543022FDA240A0036EEF5 /* Build configuration list for PBXProject "Lorcaster" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = D04542FE2FDA240A0036EEF5;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				D04543412FDA25180036EEF5 /* XCLocalSwiftPackageReference "Player" */,
+				D04543422FDA25290036EEF5 /* XCLocalSwiftPackageReference "Server" */,
+				D04543432FDA25390036EEF5 /* XCLocalSwiftPackageReference "Core" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = D04543082FDA240A0036EEF5 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				D04543062FDA240A0036EEF5 /* Lorcaster */,
+				D04543152FDA240C0036EEF5 /* LorcasterTests */,
+				D045431F2FDA240C0036EEF5 /* LorcasterUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		D04543052FDA240A0036EEF5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D04543142FDA240C0036EEF5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D045431E2FDA240C0036EEF5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		D04543032FDA240A0036EEF5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D04543122FDA240C0036EEF5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D045431C2FDA240C0036EEF5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		D04543182FDA240C0036EEF5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D04543062FDA240A0036EEF5 /* Lorcaster */;
+			targetProxy = D04543172FDA240C0036EEF5 /* PBXContainerItemProxy */;
+		};
+		D04543222FDA240C0036EEF5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D04543062FDA240A0036EEF5 /* Lorcaster */;
+			targetProxy = D04543212FDA240C0036EEF5 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		D04543282FDA240C0036EEF5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 9X384YC6G3;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		D04543292FDA240C0036EEF5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 9X384YC6G3;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		D045432B2FDA240C0036EEF5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Lorcaster.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9X384YC6G3;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.books";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = co.hyperscribe.Lorcaster;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		D045432C2FDA240C0036EEF5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Lorcaster.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9X384YC6G3;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.books";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = co.hyperscribe.Lorcaster;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		D045432E2FDA240C0036EEF5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9X384YC6G3;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = co.hyperscribe.LorcasterTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Lorcaster.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Lorcaster";
+			};
+			name = Debug;
+		};
+		D045432F2FDA240C0036EEF5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9X384YC6G3;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = co.hyperscribe.LorcasterTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Lorcaster.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Lorcaster";
+			};
+			name = Release;
+		};
+		D04543312FDA240C0036EEF5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9X384YC6G3;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = co.hyperscribe.LorcasterUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = Lorcaster;
+			};
+			name = Debug;
+		};
+		D04543322FDA240C0036EEF5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9X384YC6G3;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = co.hyperscribe.LorcasterUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = Lorcaster;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		D04543022FDA240A0036EEF5 /* Build configuration list for PBXProject "Lorcaster" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D04543282FDA240C0036EEF5 /* Debug */,
+				D04543292FDA240C0036EEF5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D045432A2FDA240C0036EEF5 /* Build configuration list for PBXNativeTarget "Lorcaster" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D045432B2FDA240C0036EEF5 /* Debug */,
+				D045432C2FDA240C0036EEF5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D045432D2FDA240C0036EEF5 /* Build configuration list for PBXNativeTarget "LorcasterTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D045432E2FDA240C0036EEF5 /* Debug */,
+				D045432F2FDA240C0036EEF5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D04543302FDA240C0036EEF5 /* Build configuration list for PBXNativeTarget "LorcasterUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D04543312FDA240C0036EEF5 /* Debug */,
+				D04543322FDA240C0036EEF5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		D04543412FDA25180036EEF5 /* XCLocalSwiftPackageReference "Player" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Player;
+		};
+		D04543422FDA25290036EEF5 /* XCLocalSwiftPackageReference "Server" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Server;
+		};
+		D04543432FDA25390036EEF5 /* XCLocalSwiftPackageReference "Core" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Core;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		D04543452FDA26190036EEF5 /* LorcasterPlayer */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D04543412FDA25180036EEF5 /* XCLocalSwiftPackageReference "Player" */;
+			productName = LorcasterPlayer;
+		};
+		D04543472FDA26190036EEF5 /* LorcasterServer */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D04543422FDA25290036EEF5 /* XCLocalSwiftPackageReference "Server" */;
+			productName = LorcasterServer;
+		};
+		D04543492FDA26190036EEF5 /* LorcasterCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D04543432FDA25390036EEF5 /* XCLocalSwiftPackageReference "Core" */;
+			productName = LorcasterCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = D04542FF2FDA240A0036EEF5 /* Project object */;
+}

@@ -1,211 +1,233 @@
-# Lorcaster → SwiftUI App Conversion Plan
+# Lorcaster → Native macOS SwiftUI App Conversion Plan
 
-**Status**: Draft (as of June 2026)  
-**Goal**: Convert the current web-based Lorcaster client (Nuxt/Vue 2) into a native SwiftUI macOS (and optionally iOS) application, while leveraging the existing robust Node.js backend where possible.  
-**Context**: This is a personal fork of Audiobookshelf. The current stack is a Node/Express + Socket.IO backend (with SQLite) serving a feature-rich web client. The user wants to develop primarily in Xcode using SwiftUI.
+**Status**: Phase 0 complete (traditional .xcodeproj + menu bar + modular SPM). Phase 1 (Library Management & Scanning + real local playback) actively implemented: real NSOpenPanel + security-scoped bookmarks + recursive AVAsset scanner with live AsyncStream updates + full add/remove/rescan/clear + filters/grid/list in LibraryTab + CoreStore + LibraryScanner actor. PlayerController now performs **real AVPlayer playback** of files resolved via CoreStore.playableURL (using bookmark + relativePath). Rate control, seek, time observer, and natural end all wired. (June 2026)  
+**Project**: Lorcaster (personal fork of Audiobookshelf)  
+**Target**: A single, fully self-contained macOS application built with Swift + SwiftUI.  
+**Core Vision**: The "iTunes of Audiobooks" — a polished, native macOS app that handles library management, acts as a local server for other devices, *and* includes a full-featured built-in player. Users install one .app and never touch the terminal, Node.js, npm, web browsers for admin, or any external dependencies.
 
-## 1. Objectives & Success Criteria
+## Clarified Requirements (Direct from User)
 
-- Deliver a high-quality native experience on macOS (primary target) with modern SwiftUI.
-- Maintain feature parity with the web client over time (library management, playback, metadata, scanning, etc.).
-- Keep the existing backend running for now (avoid a full rewrite initially).
-- Enable easy local development: run backend + SwiftUI app side-by-side.
-- Improve platform integration: native audio player, drag-and-drop, keyboard shortcuts, menu bar, widgets, notifications, etc.
-- Support connecting to remote Lorcaster/Audiobookshelf servers (not just localhost).
-- (Stretch) Share significant code with a future iOS/iPadOS version.
-- (Long-term) Evaluate full native backend if desired for performance, distribution, or independence from Node.
+- This is a **server-style app** that runs on **macOS only**.
+- **Fully packaged and self-contained**: The end user never has to deal with the terminal, Node.js, npm, `dev.js`, separate processes, or web UIs. Everything is inside the .app bundle.
+- It should feel like **iTunes / Music.app for audiobooks and podcasts** (beautiful native library management + server capabilities).
+- The app **does contain a player** (matching the current web app's player features and parity). There is a separate consumption app for other platforms/devices, but this Mac app provides a complete local playback experience.
+- Use **SwiftUI + Swift** for the best native look, feel, performance, and macOS integration.
+- Maintain **feature parity** with the current Lorcaster (the rebranded version of what exists today): library scanning, metadata providers, chapters, OPML, users/permissions, backups, progress sync, real-time updates, etc.
+- After conversion, the app will be **so different** (architecture, UI, packaging, internals) that **maintaining the upstream Audiobookshelf project will not be worth it**. This is a hard fork. We can redesign freely for native strengths.
 
-**Success Metrics**:
-- MVP: Auth + library browsing + basic playback working in < 4-6 weeks of focused work.
-- Users can replace the web client for daily use on Mac.
-- The web client remains available as a fallback/cross-platform option during transition.
+**Important clarification on scope**:
+- This single app = library manager UI + embedded server (for the separate consumption apps) + **full built-in player** (for the Mac user, with parity to the current web player: chapters, speed, sleep timer, queue, scrubbing, progress reporting, etc.).
+- The separate consumption app handles playback on phones/tablets/other machines. This Mac app is self-sufficient with its own excellent player for direct local use.
+- We are using a **traditional .xcodeproj** style (at `LorcasterMac/Lorcaster/Lorcaster.xcodeproj`) for the main app target. The three modular SPM packages (`LorcasterCore`, `LorcasterServer`, `LorcasterPlayer`) are added as local package dependencies. `MenuBarExtraAccess` is explicitly added to the target's Frameworks, Libraries, and Embedded Content. This approach gives better control over signing, entitlements, Info.plist, and future distribution/packaging scripts while preserving the modular SPM structure for the backend/player logic.
+- The original Node.js backend + web client (in the parent `Lorcaster/` directory) are retained as the live reference implementation for maintaining feature parity during the port.
 
-## 2. Recommended Architecture
+## High-Level Architecture
 
-**High-level**:
-- **Backend**: Keep the current Node.js/Express server (with FFmpeg, SQLite, scanning, etc.) as the "source of truth". It already has a solid REST API (documented in `docs/openapi.json`) and WebSocket support.
-- **Client**: New native SwiftUI app (macOS app target, potentially multi-platform).
-- **Communication**:
-  - REST API for most operations (use `swift-openapi-generator` to create a type-safe client from the existing OpenAPI spec).
-  - WebSockets (Socket.IO or raw) for real-time events (playback progress sync, library scans, notifications).
-- **Data Layer**: SwiftData (or Core Data) for local caching of libraries, items, progress. Sync with server on launch/reconnect.
-- **Audio**: AVFoundation + AVKit for playback. Report progress back to server to keep multi-device sync.
-- **State Management**: SwiftUI + `@Observable` / `ObservableObject`. For complex flows (player queue, batch editing), consider The Composable Architecture (TCA) or a simple MVVM+.
-- **UI/UX**: Replicate key screens from the Vue client (bookshelf grid, item details, player bar/modal, settings, uploads) but make them feel native. Use SF Symbols, native sheets, etc.
-- **Distribution**: macOS app (App Store or direct download). The backend can remain a separate Node process (user runs via `npm run dev` or a packaged binary later).
+**Single native macOS .app ("Lorcaster")**
 
-**Alternative Paths** (for discussion):
-- **Hybrid**: Embed a WKWebView for complex parts (e.g., chapter editor) while using native SwiftUI for the player and browsing. Faster initial delivery but less "pure" native.
-- **Full Native Backend**: Eventually port the server to Swift (e.g., using Hummingbird or Vapor + SQLite + swift-ffmpeg). This would allow a self-contained app but is a multi-month effort. Start with client-only.
-- **Thick Client**: Allow the app to manage local libraries directly (file scanning in Swift) without always needing the Node server. Hybrid mode possible.
+- **SwiftUI Layer** (the visible app):
+  - iTunes/Music-style library browser (grid/list views, covers, progress bars, search, filters, sidebar navigation for Libraries / Authors / Series / Playlists / Stats / Settings).
+  - Full-featured built-in player (bottom bar or dedicated window/panel) with chapter support, playback speed, sleep timer, queue, now-playing info, scrubbing, etc.
+  - Management tools: Add libraries (local folders), manual metadata editing, chapter editor, OPML import/export, backups, user management.
+  - Menu bar extra / status item for server status (even when the main window is closed) + quick controls.
 
-**Project Structure Suggestion**:
-```
-/Lorcaster
-  /server          # existing Node backend (keep mostly as-is)
-  /web-client      # existing Nuxt (keep for reference + web fallback)
-  /Lorcaster       # NEW Xcode project / Swift package
-    /LorcasterApp  # SwiftUI macOS app target
-    /LorcasterShared  # Models, API client, networking (sharable with iOS target later)
-    /LorcasterPlayer # Audio engine module
-  README.md
-  SWIFTUI_CONVERSION_PLAN.md  # this file
-```
+- **Embedded Server Layer** (runs inside the same app):
+  - Local file scanning and metadata extraction (using AVFoundation + other Swift libraries; bundle static ffmpeg if full current transcoding parity is required).
+  - Database (SwiftData or GRDB + SQLite — replacing current Sequelize/SQLite).
+  - HTTP server + REST API + WebSocket support (so the separate consumption apps can connect over the local network, Tailscale, etc.).
+  - Media streaming with range requests (for remote players).
+  - Progress sync from remote clients back to this server.
+  - User authentication & permissions.
+  - Real-time updates for connected clients.
 
-The SwiftUI app can live in the same repo for easy monorepo development.
+- **No external Node.js or web frontend at runtime**. The current Node backend and Nuxt web client become reference material only during the port. The final app is 100% Swift.
 
-## 3. Phased Plan
+**Packaging & Distribution**
+- Standard macOS app bundle.
+- Any necessary tools (e.g., a static `ffmpeg` binary if full current transcoding parity is required) are bundled inside the app.
+- Users choose local folders via normal "Add Library" dialogs (using security-scoped bookmarks).
+- The app can run the server in the background.
+- Future: App Store or direct download + Sparkle updates. Code-signed and notarized.
 
-### Phase 0: Foundation & Exploration (1-2 weeks)
-- **Explore current system**:
-  - Study `docs/openapi.json` and key server files (`server/controllers/`, `server/models/`).
-  - Identify must-have endpoints (auth, libraries, items, sessions, metadata, etc.).
-  - Map real-time events from SocketAuthority.
-  - Review web client screens (pages/ and components/) as UI reference.
-- **Project Setup**:
-  - Create new Xcode project: macOS > App > SwiftUI + SwiftData.
-  - Add Swift package dependencies: swift-openapi-generator, swift-openapi-runtime, swift-openapi-urlsession.
-  - Generate API client from `docs/openapi.json` (or a local copy).
-  - Set up basic networking layer with auth token handling (JWT from login).
-  - Add Socket.IO client for Swift (or implement raw WebSocket + JSON).
-- **Auth Flow MVP**:
-  - Login screen (username/password or token).
-  - Store token securely (Keychain).
-  - Basic "Server could not be reached" handling + retry.
-- **Deliverable**: App that can authenticate against a running local Lorcaster backend and show a simple "Connected" status.
+**Data Flow**
+- User adds local audiobook/podcast folders → app scans them (matching current folder structure conventions).
+- Local Mac user browses the library and plays directly in the built-in SwiftUI player (full parity with current web player).
+- Remote consumption apps connect to this Mac's Lorcaster instance for browsing + streaming + progress sync.
 
-**Tools**:
-- Use the existing `dev.js` + backend for testing.
-- Run backend with `npm run dev` and client app from Xcode.
+**Divergence Note**
+Because this will be a complete native rewrite (no web layer, no Node), we are diverging heavily from the original Audiobookshelf. Parity is with *current features*, not the upstream project's future direction. We can (and should) make native-first decisions.
 
-### Phase 1: Core Browsing & Libraries (2-3 weeks)
-- Fetch and display libraries (grid or list).
-- Bookshelf view: paginated/grid of library items (books + podcasts) with covers (use AsyncImage or Nuke).
-- Item detail view: metadata, chapters list, file list, description.
-- Series and Author browsing (reuse patterns from item lists).
-- Basic search (title/author).
-- Local caching of library data with SwiftData.
-- Error states, loading skeletons, pull-to-refresh.
+## Revised Phased Plan
 
-**Key Models to Port**:
-- Library, LibraryItem, Book, Podcast, Author, Series, MediaProgress, etc. (mirror OpenAPI schemas).
+### Phase 0: Project Setup & Core Architecture (1–2 weeks) — COMPLETE
+- Created/used traditional .xcodeproj (macOS App using SwiftUI) at `LorcasterMac/Lorcaster/Lorcaster.xcodeproj` (project folder `LorcasterMac/Lorcaster/`).
+- Scaffolded basic app target with `MenuBarExtra` (menu bar item labeled "LC" for background server operation).
+- Modular SPM targets added as local package dependencies to the .xcodeproj:
+  - `LorcasterCore/` (models, scanning logic, database)
+  - `LorcasterServer/` (embedded HTTP/WebSocket server + API routes)
+  - `LorcasterPlayer/` (AVFoundation-based player engine)
+- (Previously used `MenuBarExtraAccess` v1.2.2 for extra status-item access + `isPresented` binding; removed in an attempt to reduce BaseBoard "task name port right" noise common to LSUIElement + sandbox + menu-bar apps. Plain `MenuBarExtra` + LSUIElement is used instead.)
+- `LSUIElement` set via target's Custom macOS Application Target Properties (or matching the scaffold's `Resources/Info.plist`).
+- App uses `@NSApplicationDelegateAdaptor(AppDelegate)` + `NSApp.setActivationPolicy(.accessory)` for proper menu-bar-first / agent behavior.
+- The `.menuBarExtraAccess(isPresented:)` modifier is used for robustness.
+- Menu bar "LC" item appears reliably when launching the built `.app` from Finder (Xcode's Run button can force regular app + Dock icon behavior).
+- Project folder cleaned (removed nested SPM "App/" copy and .bak template files from the traditional project sources).
+- The original Node.js backend + web client (in the parent directory) are retained in the repo as the live reference for feature parity during the port.
+- SPM version of the app (in `LorcasterMac/App/`) remains available for quick terminal testing (`swift run Lorcaster` from the App dir).
+- **Deliverable**: Working skeleton with menu bar item, main window (TabView with Library/Player/Server placeholders using mock wiring to the modules), Settings scene, and basic lifecycle. Runs cleanly in the traditional .xcodeproj.
 
-### Phase 2: Audio Player & Playback (2-3 weeks)
-- Bottom player bar or full player window/sheet (common in music apps).
-- Playback controls: play/pause, seek, skip chapters, speed, sleep timer.
-- Integrate AVPlayer for streaming from backend (use the existing `/api/items/{id}/stream` or hls endpoints).
-- Report progress back to server (`/api/session` or similar endpoints) so sync works with web/other clients.
-- Queue management.
-- Now Playing integration (macOS Control Center, lock screen on iOS later).
-- Handle background playback and interruptions.
+### Phase 1: Library Management & Scanning + Real Local Playback (3–5 weeks) — Core spike DONE
+- Add/remove local folders (with proper macOS security-scoped bookmarks + UserDefaults persistence + scoped lifetime).
+- Recursive scanner using FileManager + AVAsset for metadata (title/author/duration/cover heuristics) + relativePath for playback resolution. Live via AsyncStream.
+- Core data model (CastItem + Library with author/relative/cover; robust Codable).
+- SwiftUI: LibraryTab (grid + list, search, sort, filters, folder chips w/ remove, rescan/clear, live scan progress, playable items).
+- **Real playback spike**: PlayerController drives AVPlayer using CoreStore.playableURL (bookmark root + relativePath). Time observer, variable rate, seek, natural end all real (no more pure mock).
+- Background scanning with live UI updates.
+- Match current folder structure conventions and auto-detection.
+- **Parity goal (achieved for MVP)**: User adds real audiobook folders via native dialog → items appear live with metadata → click to play the actual audio file in the built-in player with speed/scrub controls. Covers metadata detection is basic (filename heuristics + embedded); full providers in Phase 2.
 
-**Challenges**: Transcoding, format support (backend helps here), seeking in large files.
+### Phase 2: Metadata, Providers & Editing (3–4 weeks)
+- Implement metadata providers (Audible, iTunes, MusicBrainz, etc.) using URLSession + parsing.
+- Chapter support (detection, editing, display in player).
+- OPML import/export for podcasts.
+- Full metadata editing UI (titles, authors, covers, descriptions, etc. — matching current web capabilities).
+- Author/series grouping and management.
+- **Parity goal**: All current metadata features from the web UI.
 
-### Phase 3: Advanced Features & Parity (4+ weeks)
-- Uploads (file picker + progress, using existing upload endpoints).
-- Metadata editing (covers, tags, chapters) – port the complex modals from Vue.
-- Library scanning / folder management.
-- User settings, server config (if admin).
-- Notifications (new episodes, scan complete) via server + local.
-- Real-time updates: listen to sockets for library changes, playback from other devices.
-- Playlists, collections, stats views.
-- Ebook reader support (if keeping that feature – WebView or native?).
-- Batch operations.
+### Phase 3: Built-in Player (Full Current Parity) (3–4 weeks)
+- Native player using AVFoundation + AVKit (bottom bar + full expanded player view or separate window).
+- Features to match web player parity:
+  - Play/pause, seek, skip forward/back.
+  - Chapter navigation and display.
+  - Playback speed control.
+  - Sleep timer.
+  - Queue / playlist support.
+  - Progress tracking and syncing (local + report to server for remote clients).
+  - Now Playing integration (macOS Control Center, media keys).
+  - Background playback and interruptions.
+- UI: Chapter list, waveform if available, speed/sleep controls, queue editor.
+- Handle the same audio formats as the current app (leveraging bundled ffmpeg for tricky cases or transcoding).
+- **Parity goal**: Local Mac user can play exactly as they do in the current web client, with the same controls and behaviors.
 
-### Phase 4: macOS Polish, Distribution & Extras (3 weeks)
-- Native macOS UI: sidebar navigation, toolbar, multiple windows (e.g., player detached), drag & drop for uploads.
-- Keyboard shortcuts, menu bar app option (quick controls).
-- Theming / dark mode (match or improve on current Tailwind theme).
-- Accessibility (VoiceOver), localization (start with English).
-- Performance: virtual scrolling for large libraries, image caching.
-- Packaging: Build as standalone .app. Optionally bundle a way to launch the Node server (embedded Node binary is complex; document "run `npm run dev` alongside" for MVP).
-- iOS target (adaptive layouts, SwiftUI previews).
-- Testing: Unit tests for API client/models, UI tests for key flows.
-- Onboarding: "Connect to server" flow (local + remote URLs), first-run library setup.
+### Phase 4: Embedded Server & Remote Client Support (4–6 weeks)
+- Full HTTP server + the API surface needed by the separate consumption apps (match current API where practical for compatibility).
+- Media streaming with range requests for seeking over the network.
+- Real-time updates via WebSockets for connected players (new items, scan progress, etc.).
+- User authentication and permissions for remote access.
+- Progress reporting from remote consumption apps back to this server.
+- Test compatibility with the existing consumption app(s).
+- **Parity goal**: The separate consumption apps can connect and play from this Mac app exactly as they do from the current Node server.
 
-### Phase 5: Long-term / Optional (Future)
-- **Backend Port**: Evaluate rewriting core server in Swift (file scanning with FileManager + metadata libs, FFmpeg via system or SwiftFFmpeg, SQLite via GRDB or SwiftData, auth with JWT libs).
-  - Pros: Single language, better Mac integration, easier distribution (no Node dependency).
-  - Cons: Huge effort (re-implement scanning logic, user management, etc.). Start only if client proves valuable.
-- Offline mode enhancements (download for offline listening, local library mode).
-- WatchOS / tvOS companions if desired.
-- App Store submission (sandboxing, entitlements for file access, network).
-- Community: Since this is a fork, decide on open-sourcing the SwiftUI client separately or merged.
+### Phase 5: Users, Settings, Backups & Advanced Features (3–4 weeks)
+- User accounts and permissions (match current multi-user support).
+- Full settings UI (scanning options, metadata providers, server port, etc.).
+- Backups of the internal database + settings.
+- Statistics, listening history, etc.
+- Any remaining features from the current web app (batch editing, custom metadata providers, etc.).
 
-## 4. Technical Stack & Tools
+### Phase 6: macOS Polish, Packaging & Release (3–4 weeks)
+- Deep macOS integration:
+  - Sidebar + toolbar + inspector panels (native patterns).
+  - Drag & drop folders and files.
+  - Keyboard shortcuts, menu bar controls (play/pause, server start/stop).
+  - Multiple windows (e.g., detached player).
+  - Dark mode, accessibility (VoiceOver), localization.
+- Performance: Efficient handling of large libraries (thousands of items) with lazy loading.
+- Packaging: Self-contained .app (bundle ffmpeg if used; embed server logic).
+- First-run experience: Welcome screen, add first library, create admin user.
+- Code signing + notarization.
+- Update mechanism (Sparkle recommended for direct downloads).
+- Help/documentation inside the app.
 
-- **Language/UI**: Swift 6, SwiftUI (macOS 14+ / iOS 17+ recommended).
-- **API Client**: swift-openapi-generator (best for staying in sync with backend OpenAPI).
-- **Networking**: URLSession (or Alamofire for convenience).
-- **WebSockets**: Socket.IO-Client-Swift or Starscream + custom handling.
-- **Audio**: AVFoundation, AVKit.
-- **Persistence**: SwiftData (modern, SwiftUI-friendly) or GRDB.swift.
-- **Images**: AsyncImage + caching, or Nuke.
-- **Architecture**: Start simple (MVVM with @Observable). Adopt TCA if state gets complex (player + queue + multiple views).
-- **Other**:
-  - Swift Concurrency (async/await, actors for player state).
-  - KeychainAccess for tokens.
-  - UniformTypeIdentifiers for file handling.
-- **Dev Tools**: Xcode, Swift Package Manager. Run backend in parallel terminal. Use SwiftUI Previews heavily (mock API responses).
-- **Testing**: XCTest + ViewInspector or similar for UI.
+### Phase 7: Future / Optional
+- Widgets, Shortcuts support, Focus modes integration.
+- Optional lightweight web interface (only if strong demand — try to avoid).
+- iOS companion (if you later decide to expand the consumption side).
+- App Store submission or direct distribution.
+
+## Technical Recommendations
+
+- **UI**: Pure SwiftUI. Use NavigationSplitView, lists with sections, inspectors, sheets, and SF Symbols. Target macOS 14+ for best modern APIs.
+- **Server**: Hummingbird (lightweight recommendation) or Vapor.
+- **Database**: SwiftData (preferred) or GRDB.swift.
+- **Audio/Player**: AVFoundation + AVKit for the built-in player. Bundle a static `ffmpeg` binary inside the app for full format support and transcoding parity with the current implementation.
+- **Scanning/Metadata**: FileManager + AVAsset for core, plus URLSession-based providers for online enrichment.
+- **Networking (for remote clients)**: The embedded server handles it. Keep the public API as close as practical to the current one for consumption app compatibility.
+- **Background operation**: Use a status item. The server runs even when the main window is closed.
+- **Architecture**: Modular (LorcasterCore / LorcasterServer / LorcasterPlayer / LorcasterUI). Use Swift Concurrency heavily. Consider The Composable Architecture (TCA) for the more complex player + queue state if MVVM feels insufficient.
 
 **Leverage Existing Assets**:
-- The OpenAPI spec is gold for codegen.
-- Web client components/strings as design/UX reference (don't copy pixel-perfect; make it native).
-- Existing `dev.js` and local server for rapid iteration.
+- The current OpenAPI spec (`docs/openapi.json`) is extremely useful for defining the server API that remote clients will use.
+- The web client (pages, components, strings, player logic) is the best reference for exact feature parity and UX flows (don't copy pixel-perfect — make it native).
+- Your existing local test libraries and `dev.js` setup can be used for validation during development.
 
-## 5. Risks, Challenges & Mitigations
+## Risks, Challenges & Mitigations
 
-- **Feature Surface Area**: The Vue client is very complete (modals for everything, batch editing, readers, stats). **Mitigation**: Prioritize ruthlessly (playback + browsing first). Use the web client for power-user features initially.
-- **Real-time & Sync**: WebSockets + progress reporting must be solid for multi-device use. **Mitigation**: Start with polling if sockets are hard, then add sockets.
-- **Media Complexity**: Streaming large files, chapters, different formats. **Mitigation**: Rely on backend for serving (it already does heavy lifting with FFmpeg).
-- **Backend Dependency**: Users must run Node server. **Mitigation**: Clear docs, "one-click" local server launch helper in the app (launch `node` process), future embedded server option.
-- **Performance on Large Libraries**: SwiftUI lists/grids can struggle with 10k+ items. **Mitigation**: Pagination, lazy loading, virtual views from day one.
-- **Maintaining Two Frontends**: Web + native. **Mitigation**: Treat web as "reference implementation" or deprecate it over time for Mac users.
-- **Distribution**: Sandboxing limits file access. Users with large local libraries may need "Full Disk Access".
-- **Time Estimate**: 3-6 months part-time for a solid MVP-to-polished macOS app (depending on prior SwiftUI experience). Backend port would add 6+ months.
+- **Large scope** (full server port + rich player with parity + management UI in one app).  
+  **Mitigation**: Strict prioritization. Get a working local library + built-in player first (Phases 1–3), then add the server layer for remote clients (Phase 4). Use the current web + Node version as a living reference for feature parity.
+- **FFmpeg bundling & audio complexity** (to match current transcoding and format support).  
+  **Mitigation**: Bundling a static binary is standard and reliable on macOS. Start with local playback using AVFoundation; add full transcoding support as needed.
+- **API compatibility** with existing consumption apps.  
+  **Mitigation**: Match the current public API surface as closely as possible in the early server phases. Since this is a hard fork, we can evolve or clearly document differences later.
+- **Performance with large libraries**.  
+  **Mitigation**: Design for pagination, lazy loading, and efficient SwiftUI lists from the beginning.
+- **Maintaining parity while diverging**.  
+  **Mitigation**: Treat the current web client as the spec for features. Replicate behaviors in native code rather than trying to share logic.
+- **Sandboxing & file access**.  
+  **Mitigation**: Use security-scoped bookmarks + clear UI for granting access to library folders. Users with large local libraries may need "Full Disk Access" in System Settings.
+- **Console noise from AVFoundation / CoreMedia / libsqlite3 (only during playback)**.  
+  **Mitigation**: Harmless but noisy Error logs appear when AVPlayer starts real decoding of sandboxed local files:
+  - `FigAirPlay_Route` / `kFigPlayerError_ParamErr` (NULL airplayRoute) — mitigated by `allowsExternalPlayback = false`.
+  - `libsqlite3` "logging-persist" + `open(/private/var/db/DetachedSignatures)` — internal to CoreMedia's persistent signature / logging VFS when the full playback pipeline initializes. Only on `play()`, not metadata scan. Documented in code; filter in Console ("libsqlite3", "DetachedSignatures", "logging-persist"). Cannot be eliminated from userland without private APIs. Expected in sandboxed + LSUIElement media apps; quiets somewhat after proper signing/notarization.
+- **Time investment**.  
+  **Mitigation**: This is a substantial but very achievable project. Expect 8–14 months part-time for a solid, parity-complete release (depending on experience level). The hard-fork decision removes a lot of ongoing maintenance burden.
 
-## 6. Milestones & Timeline (Rough)
+## Milestones (Rough)
 
-- **M0 (Week 1)**: Project created, auth + "connected to server" working.
-- **M1 (Week 3-4)**: Library list + item grid + detail view.
-- **M2 (Week 6-7)**: Working audio player with progress sync.
-- **M3 (Week 10+)**: Uploads, search, basic settings. Usable daily driver.
-- **M4**: Polish, macOS integrations, beta testing.
-- **Ongoing**: Feature parity sprints, iOS support.
+- **M0**: New Xcode project + menu bar app + stub server + basic player skeleton running.
+- **M1**: Local library scanning + basic SwiftUI browser working.
+- **M2**: Full built-in player with chapter/speed/sleep/queue support (local parity).
+- **M3**: Embedded server + remote client can connect, browse, and play (server parity).
+- **M4**: All current features ported + polished macOS experience.
+- **M5**: Self-contained, signed .app ready for beta testing and release.
 
-Track in GitHub issues or a `Lorcaster/SwiftUI` milestone.
+## Current Progress (as of June 2026)
 
-## 7. Immediate Next Steps (Actionable)
+- **Phase 0 complete and working** in a traditional .xcodeproj (`LorcasterMac/Lorcaster/Lorcaster.xcodeproj`).
+- **Phase 1 (Library + real playback) in progress / core spike complete**:
+  - Full library management in `LibraryTab` (and Dashboard list): Add Folder via `NSOpenPanel`, security-scoped app-scope bookmarks persisted in UserDefaults, folder chips with per-folder remove, Rescan All, Clear All, search filter, sort (title/dur/source), list vs grid view toggle, live scanning progress, error display, ContentUnavailable states.
+  - `LorcasterCore`:
+    - `CastItem` + `Library` models (Codable robust to evolution, Sendable, relativePath + coverRelativePath + author for parity).
+    - `LibraryScanner` actor: recursive `FileManager.enumerator`, `AVURLAsset.load(.duration)` + `.commonMetadata` (title/artist fallbacks for ID3/iTunes), cover sibling detection (cover.jpg/folder.png etc heuristics), `relativePath` computation, yields via `AsyncStream<CastItem>` for **live incremental** UI population during long scans.
+    - `CoreStore` (@MainActor @Observable): `addLibraryFolder` (bookmark + scope + live stream append + dedup + clear samples on first real add), `removeLibraryFolder`, `clearLibrary`, `rescanAll`, `playableURL(for:)` (re-resolve bookmark by source name + append relative components safely), persistence/restore of bookmarks+items, scoped resource lifetime mgmt.
+  - `LorcasterPlayer`:
+    - `PlayerController` now uses **real `AVPlayer` + `AVPlayerItem`** (not mock). `load(_:)` resolves via `CoreStore.shared.playableURL(for: item)` (the bookmark + relativePath bridge), creates player, installs periodic time observer (updates currentTime live), async loads more accurate asset duration, applies variable rate, seek with tolerance, natural end detection.
+    - `play/pause/toggle/stop/seek/setRate` all drive the real AVPlayer (with fallback lightweight sim only for the rare unresolved-URL case so UI never completely dead).
+    - Rate Stepper in PlayerTab now functional (binds through `setRate`).
+  - Cross-cutting: Menu bar, main window tabs, Settings (dock icon toggle that flips activation policy) all wired to the real Core/Player/Server controllers. Two source trees kept in sync (traditional `Lorcaster/` next to .xcodeproj + `App/Sources/Lorcaster/` for `swift run` SPM harness).
+- Scaffold/Phase 0 details still apply (MenuBarExtraAccess explicitly in target's Frameworks/Libraries/Embedded Content, LSUIElement, AppDelegate accessory policy, `.menuBarExtraAccess`, cleaned project, etc.).
+- The SPM-based version (in `LorcasterMac/App/`) remains available for quick terminal testing (`swift run Lorcaster` from the App dir) and builds the same logic.
+- Original Node.js backend + web client (in the parent `Lorcaster/` directory) retained as the live reference for feature parity during the port.
+- All prior rebrand work carried forward.
 
-1. **Decide scope**: Confirm macOS-first, client-only (backend stays Node for now). Create the new Xcode project inside or alongside this repo.
-2. **Set up API client**: Add swift-openapi-generator target. Generate models/endpoints from `docs/openapi.json`. Implement a `LorcasterClient` service.
-3. **Auth screen**: Simple form + token storage. Test against your running local backend (`npm run dev`).
-4. **Basic navigation**: Sidebar with Libraries / Books / Podcasts / Settings (inspired by current web layout but native).
-5. **Spike player**: Minimal AVPlayer that can stream a known item URL from the backend.
-6. **Update this plan**: As you discover API quirks or decide on architecture (e.g., adopt TCA?).
-7. **Run in parallel**: Keep the web client working for reference/testing while building the native version.
+## Immediate Recommended Next Steps
 
-**Questions to resolve soon**:
-- macOS only for v1, or multi-platform from the start?
-- Do we want the app to be able to *start/manage* the local backend process (e.g., embedded server toggle)?
-- Any must-have macOS features (e.g., menu bar player, Shortcuts support, iCloud sync of settings)?
-- Design direction: Match current look closely, or fresh modern SwiftUI design?
+1. Open `LorcasterMac/Lorcaster/Lorcaster.xcodeproj` (or the SPM `LorcasterMac/App` package) and build/run. Use "Add Folder…" in the Library tab against one of your real audiobook directories (the same ones you used with the Node version). Verify items appear incrementally, folders can be removed individually, search/sort/grid work, and tapping an item plays the **actual audio file** with working speed stepper, seek (click in Player tab or future UI), pause/stop, and time updates in menu bar + tabs.
+2. If a folder added via the app doesn't play (rare), check Console for "Could not resolve playable URL", verify the folder is still at the same path, and try Rescan or re-adding. (Security scope + bookmarks survive app restarts.)
+3. Decide on the embedded server framework (Hummingbird recommended for lightness; Vapor as alternative) and media handling strategy (bundle the existing `ffmpeg`/`ffprobe` from repo root, or a static build, for full current transcoding parity in Phase 4) before heavy server work.
+4. Keep the Node + web client running in parallel (`npm run dev` + client) as the living spec for exact feature parity (scanning layout, metadata fields, player behaviors, API surface for the consumption apps).
+5. Next concrete pieces after validation: richer cover art (load actual images from coverRelativePath using the same bookmark root), chapter detection (from files or embedded), and/or start the server framework spike.
 
-## 8. Resources
+This plan now fully incorporates:
+- macOS-only, self-contained packaged app (no Node/terminal for end users).
+- iTunes-like experience with full built-in player (parity with current web app).
+- Embedded server for the separate consumption apps.
+- Traditional .xcodeproj style (with local SPM packages for Core/Server/Player and MenuBarExtraAccess explicitly linked in the target's Frameworks, Libraries, and Embedded Content).
+- Hard fork / parity only with current features.
+- Native SwiftUI + Swift throughout.
+- Retention of the original Node/web as live reference.
+- The rebrand work (Lorcaster naming, custom assets, fork positioning in README, etc.) carried forward.
 
-- Official OpenAPI: `docs/openapi.json` + `docs/` YAML files.
-- Existing web client: Great for UX flows and strings (see `client/strings/en-us.json`, pages, components).
-- SwiftUI + Audio examples from Apple.
-- swift-openapi-generator docs.
-- The original Audiobookshelf iOS app (separate repo) for inspiration on native patterns (even if not SwiftUI).
+The team review (Swift expert, engineer, quality expert, critic) shaped the modular structure and cautioned against over-engineering the initial scaffold; we started with a minimal but functional skeleton using proven patterns from similar apps in the workspace.
 
-This plan is a living document. Update it as you build. The rebrand work you've done (Lorcaster naming, custom icon/banner) will carry over nicely to the native app.
-
-If you'd like, I can:
-- Help scaffold the initial Xcode project structure and API client.
-- Generate starter Swift models from the OpenAPI.
-- Create specific screens (e.g., LoginView, LibraryGrid) as code snippets.
-- Refine this plan with more details on any phase.
-
-Just say the word — and in the meantime, your backend should finish starting up! Check that terminal for the "Listening on port" message.
+Let me know the next concrete piece you'd like to tackle (e.g., real scanning + AVPlayer spike, or server framework decision).
