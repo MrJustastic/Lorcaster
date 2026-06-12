@@ -32,6 +32,13 @@ public final class PlayerController {
     public private(set) var chapters: [Chapter] = []
     public private(set) var currentChapter: Chapter?
 
+    // Used to suppress the "near end of chapter" auto-advance for a short time
+    // right after the user (or skip button / chapter list tap) manually selects a chapter.
+    // Also lets updateCurrentChapter() temporarily trust the explicitly chosen currentChapter
+    // (prevents the time-based lookup from immediately flipping the highlight back to a
+    // different chapter while the player seek is still propagating).
+    private var lastChapterSwitchTime: Date = .distantPast
+
     public static let shared = PlayerController()
 
     private var avPlayer: AVPlayer?
@@ -40,6 +47,10 @@ public final class PlayerController {
     // For Now Playing integration
     private var nowPlayingInfo: [String: Any] = [:]
 
+    // Current artwork object (set only once per item during #3 re-introduction).
+    // Stored separately so we can re-attach it safely without full preservation logic yet.
+    private var currentArtwork: MPMediaItemArtwork?
+
     private init() {}
 
     public func load(_ item: CastItem) {
@@ -47,9 +58,17 @@ public final class PlayerController {
         currentItem = item
         duration = item.duration > 0 ? item.duration : 0
         currentTime = 0
+        currentArtwork = nil   // reset for new item (#3 guarded re-introduction)
         rate = 1.0
-        chapters = []
+
+        // Preserve chapters from the model (multi-file books have per-file relativePaths + cumulative startTimes).
+        // We will only enrich with embedded metadata for single-chapter items.
+        chapters = item.chapters
         currentChapter = nil
+        updateCurrentChapter()  // pick a sensible initial currentChapter from the model's list.
+                                // For embedded books this may be a placeholder; the enrichment task below
+                                // will replace the list and re-establish the correct highlighted chapter.
+
 
         // Simple queue management: if this item is not already the "current" in queue,
         // treat "load" as "play this now" (replace queue with just this item for basic use).
@@ -121,28 +140,59 @@ public final class PlayerController {
         timeObserver = p.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                let secs = time.seconds
-                if secs >= 0 {
-                    self.currentTime = secs
-                }
-                self.updateCurrentChapter()
-                self.updateNowPlaying()
+                let playerSecs = time.seconds
+                if playerSecs < 0 { return }
 
-                // Natural end detection (use scanned duration or asset duration)
+                // For embedded chapters in a .m4b (single file), playerSecs is absolute from start of file.
+                // Our currentTime / duration are chapter-local for consistency with multi-file books.
+                // Compute local time for UI, chapter matching, and per-chapter end detection.
+                let localSecs: TimeInterval
+                if let ch = self.currentChapter, ch.relativePath == nil {
+                    localSecs = max(0, playerSecs - ch.startTime)
+                } else {
+                    localSecs = playerSecs
+                }
+
+                self.currentTime = localSecs
+                self.updateCurrentChapter()
+                self.updateNowPlayingElapsedOnly()
+
+                // Natural end detection for the *current chapter* (local time vs chapter duration)
                 let dur = self.duration > 0 ? self.duration : (playerItem.duration.seconds > 0 ? playerItem.duration.seconds : 0)
-                if dur > 0 && secs >= dur - 0.3 {
+                // Suppress the auto-advance for a short window after the user manually selected
+                // a chapter (via list tap or Prev/Next buttons). This was causing "click a
+                // chapter and it immediately jumps to the next one".
+                let recentlySwitchedChapter = Date().timeIntervalSince(lastChapterSwitchTime) < 0.8
+                if dur > 0 && localSecs >= dur - 0.3 && !recentlySwitchedChapter {
                     self.advanceToNextInQueueOrStop()
                 }
             }
         }
 
         // Load chapters asynchronously (requires the asset to be loaded)
+        // Only for single-file items (or items without file-based chapter list) to enrich
+        // with embedded chapter metadata (e.g. m4b). For multi-file books we keep the
+        // per-file chapters list provided by the scanner (with relativePaths).
         Task { [weak self] in
             guard let self else { return }
-            let loadedChapters = await self.loadChapters(from: asset)
-            if self.currentItem?.id == item.id {
-                self.chapters = loadedChapters
-                self.updateCurrentChapter()
+            let shouldEnrichEmbedded = self.chapters.count <= 1 || self.chapters.allSatisfy { $0.relativePath == nil }
+            if shouldEnrichEmbedded {
+                let loadedChapters = await self.loadChapters(from: asset)
+                if self.currentItem?.id == item.id {
+                    // When the async enrichment task replaces the chapters array with the detailed
+                    // embedded markers, pick the one whose startTime is closest to where we were
+                    // (usually the first chapter on a fresh load). This makes the black "currently
+                    // playing" highlight appear right away and lets the Prev/Next buttons work
+                    // from the very beginning, without needing a prior tap in the list.
+                    let previous = self.currentChapter
+                    self.chapters = loadedChapters
+                    if let prev = previous,
+                       let match = self.chapters.min(by: { abs($0.startTime - prev.startTime) < abs($1.startTime - prev.startTime) }) {
+                        self.currentChapter = match
+                    } else {
+                        self.updateCurrentChapter()
+                    }
+                }
             }
         }
 
@@ -156,17 +206,59 @@ public final class PlayerController {
             await MainActor.run { [weak self] in self?.updateNowPlaying() }
         }
 
-        // Prepare artwork for Now Playing (cover from coverRelativePath if present)
+        // #3 in progress / bisecting:
+        // - Safe cover loading (off-main) + realizedCopy pre-render on main is ACTIVE (with log).
+        // - The actual MPMediaItemArtwork creation + set to nowPlayingInfo + updateNowPlaying()
+        //   from this path is COMMENTED OUT because enabling it broke playback for art books.
+        //
+        // Test this version: if pre-render load alone works, then the culprit is creating the
+        // MPMediaItemArtwork object (or setting it / calling update from the Task).
+        //
+        // The commented creation below includes the TIFF roundtrip in the handler for safety.
+        //
+        // currentArtwork var and nils in load/stop are left in place for when we re-enable.
+        //
+        // Still not doing: frequent re-attachment, full preservation (start from center info).
         Task { [weak self] in
-            guard let self = self, let coverURL = CoreStore.shared.coverURL(for: item) else {
-                await MainActor.run { [weak self] in self?.updateNowPlaying() }
+            guard let self, self.currentItem?.id == item.id else { return }
+
+            guard let coverURL = CoreStore.shared.coverURL(for: item) else {
                 return
             }
-            if let nsImage = NSImage(contentsOf: coverURL) {
-                let artwork = MPMediaItemArtwork(boundsSize: nsImage.size) { _ in nsImage }
-                self.nowPlayingInfo[MPMediaItemPropertyArtwork] = artwork
+
+            let loadedImage: NSImage? = await Task.detached {
+                NSImage(contentsOf: coverURL)
+            }.value
+
+            guard let loadedImage, loadedImage.size.width > 0, loadedImage.size.height > 0 else {
+                return
             }
-            self.updateNowPlaying()
+
+            // Pre-render on main (this is the key "safe" part of #3).
+            let realized = await MainActor.run { self.realizedCopy(of: loadedImage) }
+
+            print("[LorcasterPlayer] Pre-rendered cover for \(item.title)")
+
+            // The following (creation of MPMediaItemArtwork and installation) is currently
+            // commented because it broke playback for art books. We are bisecting #3.
+            // TODO: try re-enabling the creation + set in small steps (e.g. create but don't set,
+            // or set but only on main explicitly, different handler, etc.)
+            //
+            // let artwork = MPMediaItemArtwork(boundsSize: realized.size) { _ in
+            //     // Extra safety: TIFF roundtrip to realize on whatever queue the handler is called.
+            //     if let tiff = realized.tiffRepresentation, let fresh = NSImage(data: tiff) {
+            //         return fresh
+            //     }
+            //     return realized
+            // }
+            //
+            // // Set only once per item.
+            // if self.currentItem?.id == item.id && self.currentArtwork == nil {
+            //     self.currentArtwork = artwork
+            //     self.nowPlayingInfo[MPMediaItemPropertyArtwork] = artwork
+            //     self.updateNowPlaying()   // explicit "art arrived" full publish
+            //     print("[LorcasterPlayer] Attached artwork for \(item.title) (once-per-item, pre-rendered)")
+            // }
         }
 
         if nowPlayingInfo.isEmpty {
@@ -215,8 +307,27 @@ public final class PlayerController {
             currentChapter = nil
             return
         }
-        let time = currentTime
-        // Find the last chapter whose startTime <= current time
+
+        // Trust an explicitly chosen currentChapter for a short time after the user
+        // (or skip button) selected it. This prevents the time-based lookup from
+        // immediately overriding it with a stale time value while the player seek
+        // is still settling. The guard for relativePath (file-based) is kept as a
+        // permanent rule; the recent-switch guard covers embedded chapters.
+        if let ch = currentChapter, ch.relativePath != nil || Date().timeIntervalSince(lastChapterSwitchTime) < 1.0 {
+            return
+        }
+
+        // Compute the "match time" against the chapters' startTimes.
+        // For embedded chapters in a single file, our exposed currentTime is chapter-local (0-based),
+        // so add the chapter's startTime offset to get the file-absolute time for matching.
+        var matchTime = currentTime
+        if let ch = currentChapter, ch.relativePath == nil {
+            matchTime = ch.startTime + currentTime
+        }
+
+        let time = matchTime
+        // Time-based matching only makes sense for embedded chapters within a single audio file
+        // (where startTime is relative to the file).
         if let chapter = chapters.last(where: { $0.startTime <= time }) {
             if currentChapter?.id != chapter.id {
                 currentChapter = chapter
@@ -235,6 +346,7 @@ public final class PlayerController {
            let chIdx = chapters.firstIndex(where: { $0.id == currentCh.id }),
            chIdx + 1 < chapters.count {
             let nextCh = chapters[chIdx + 1]
+            lastChapterSwitchTime = Date()
             playChapter(nextCh)
             // stay in "playing" state
             if !isPlaying { play() }
@@ -309,6 +421,7 @@ public final class PlayerController {
     public func playChapter(_ chapter: Chapter) {
         guard let item = currentItem else { return }
         currentChapter = chapter
+        lastChapterSwitchTime = Date()   // used by the time-observer end-detection poll
 
         let chRel = chapter.relativePath ?? item.relativePath
         guard let chRel else { return }
@@ -325,13 +438,23 @@ public final class PlayerController {
             return
         }
 
-        let asset = AVURLAsset(url: url)
-        let newPlayerItem = AVPlayerItem(asset: asset)
+        if chapter.relativePath != nil {
+            // Multi-file chapter: the chapter lives in a *different* audio file.
+            // We have to create a new AVPlayerItem for the new file and replace.
+            let asset = AVURLAsset(url: url)
+            let newPlayerItem = AVPlayerItem(asset: asset)
+            avPlayer?.replaceCurrentItem(with: newPlayerItem)
+        }
+        // Embedded chapters inside one .m4b (relativePath == nil on the chapter):
+        // We are already on the correct single file. We must NOT replace the AVPlayerItem.
+        // Unconditionally replacing the item (even for the same underlying file) was
+        // the direct cause of "clicking a chapter stops playback".
+        // For the embedded case we just update our per-chapter local state and seek;
+        // the seek(to:) method does the offset translation using chapter.startTime.
 
-        // Replace current item (keeps the player and observer)
-        avPlayer?.replaceCurrentItem(with: newPlayerItem)
-
-        // Update local state for this chapter/file
+        // Per-chapter local time + duration so the UI, chapter list highlight,
+        // progress, and "end of this chapter" detection all treat the current marker
+        // consistently (same model as multi-file chapters).
         duration = chapter.duration ?? 0
         currentTime = 0
 
@@ -340,11 +463,11 @@ public final class PlayerController {
             avPlayer?.rate = rate
         }
 
-        // For file-based chapters (multi-file books), the chapter file starts at local time 0.
-        // For embedded chapters (single file), seek to the chapter's startTime within the file.
-        let seekTime: TimeInterval = (chapter.relativePath != nil) ? 0 : chapter.startTime
-        seek(to: seekTime)
+        // Seek to local 0 of *this* chapter.
+        // Translation for embedded chapters lives in the fixed seek(to:) implementation.
+        seek(to: 0)
 
+        updateCurrentChapter()   // ensure the chapter list highlight follows immediately
         updateNowPlaying()
         print("[LorcasterPlayer] Switched to chapter: \(chapter.title)")
     }
@@ -355,6 +478,7 @@ public final class PlayerController {
         guard let current = currentChapter,
               let currentIdx = chapters.firstIndex(where: { $0.id == current.id }),
               currentIdx + 1 < chapters.count else { return }
+        lastChapterSwitchTime = Date()
         let nextChapter = chapters[currentIdx + 1]
         playChapter(nextChapter)
     }
@@ -363,9 +487,13 @@ public final class PlayerController {
         guard let current = currentChapter,
               let currentIdx = chapters.firstIndex(where: { $0.id == current.id }) else { return }
 
+        lastChapterSwitchTime = Date()
         let target: Chapter
-        if currentTime - current.startTime > 3, currentIdx > 0 {
-            // If more than a few seconds into the chapter, restart it
+        // currentTime is always the *local* (chapter-relative) time now, thanks to the
+        // observer translation for embedded chapters. So the "how far into this chapter"
+        // test is simply currentTime for both file-based and embedded.
+        if currentTime > 3, currentIdx > 0 {
+            // If more than a few seconds into the chapter, restart the current one
             target = chapters[currentIdx]
         } else if currentIdx > 0 {
             target = chapters[currentIdx - 1]
@@ -394,13 +522,44 @@ public final class PlayerController {
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
         info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? rate : 0.0
 
-        // Preserve artwork if we already loaded one
-        if let existingArtwork = nowPlayingInfo[MPMediaItemPropertyArtwork] {
-            info[MPMediaItemPropertyArtwork] = existingArtwork
-        }
+        // #3 support commented while bisecting the MPMediaItemArtwork creation:
+        // if let artwork = currentArtwork {
+        //     info[MPMediaItemPropertyArtwork] = artwork
+        // }
 
         nowPlayingInfo = info
         center.nowPlayingInfo = info
+    }
+
+    /// Lightweight update used by the periodic time observer.
+    /// Only touches elapsed time and rate. This avoids re-publishing the full info
+    /// dictionary (and any MPMediaItemArtwork it may contain) on every 0.25s tick.
+    /// Full updates are still used for explicit events (load, play/pause, seek, chapter,
+    /// art arrival). This is a key mitigation for the libdispatch queue asserts that
+    /// occurred when artwork was present.
+    private func updateNowPlayingElapsedOnly() {
+        let center = MPNowPlayingInfoCenter.default()
+        var info = center.nowPlayingInfo ?? nowPlayingInfo
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
+        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? rate : 0.0
+        center.nowPlayingInfo = info
+        nowPlayingInfo = info
+    }
+
+    /// Forces a fully decoded bitmap copy of the NSImage on the current thread (called on main).
+    /// This is critical before passing to MPMediaItemArtwork to avoid lazy decoding / cross-queue
+    /// surprises that contributed to the previous libdispatch asserts.
+    private func realizedCopy(of image: NSImage) -> NSImage {
+        guard image.size.width > 0, image.size.height > 0 else { return image }
+        let copy = NSImage(size: image.size)
+        copy.lockFocus()
+        image.draw(in: NSRect(origin: .zero, size: image.size),
+                   from: NSRect(origin: .zero, size: image.size),
+                   operation: .copy,
+                   fraction: 1.0)
+        copy.unlockFocus()
+        _ = copy.tiffRepresentation
+        return copy
     }
 
     private func setupRemoteCommands() {
@@ -507,6 +666,7 @@ public final class PlayerController {
 
         // Clear Now Playing when stopping
         nowPlayingInfo = [:]
+        currentArtwork = nil
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
 
         // Keep currentItem/duration visible in UI after stop (common for "now playing" history), or clear:
@@ -522,10 +682,18 @@ public final class PlayerController {
         let clamped = min(max(0, time), duration > 0 ? duration : time)
         currentTime = clamped
         guard let p = avPlayer else { return }
-        let cmTime = CMTime(seconds: clamped, preferredTimescale: 600)
+
+        // For embedded chapters, the seek 'time' from UI is chapter-local.
+        // Translate to the actual player time within the single file.
+        var playerSeekTime = clamped
+        if let ch = currentChapter, ch.relativePath == nil {
+            playerSeekTime = ch.startTime + clamped
+        }
+
+        let cmTime = CMTime(seconds: playerSeekTime, preferredTimescale: 600)
         p.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
         updateNowPlaying()
-        print("[LorcasterPlayer] Seeked to \(Int(clamped))s")
+        print("[LorcasterPlayer] Seeked to \(Int(clamped))s (chapter local)")
     }
 
     /// Sets playback rate (0.5x – 2.0x etc). Applies immediately if playing.

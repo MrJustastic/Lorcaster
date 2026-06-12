@@ -89,19 +89,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             server: server,
             player: player
         )
-        .frame(minWidth: 480, minHeight: 320)
+        .frame(minWidth: 480, minHeight: 700)
 
         let hostingView = NSHostingView(rootView: controlsView)
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 640, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 720),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "Lorcaster"
         window.contentView = hostingView
-        window.minSize = NSSize(width: 480, height: 320)
+        window.minSize = NSSize(width: 480, height: 700)
         window.center()
         window.isReleasedWhenClosed = false  // Keep the NSWindow instance so we can bring it back later.
 

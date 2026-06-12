@@ -84,30 +84,46 @@ private struct PlayerTab: View {
     @Bindable var player: PlayerController
     @Bindable var coreStore: CoreStore
 
+    @State private var coverImage: NSImage?
+    @State private var isLoadingCover = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Now Playing")
                 .font(.title2)
 
             if let item = player.currentItem {
-                // Real cover art from coverRelativePath (resolved via bookmark + scope)
+                // PlayerTab visual cover — now 3x larger with .scaledToFit() + padding for nice containment.
                 if let coverURL = coreStore.coverURL(for: item) {
-                    AsyncImage(url: coverURL) { phase in
-                        switch phase {
-                        case .empty:
-                            ProgressView().frame(height: 160)
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFit()
-                                .frame(maxHeight: 180)
-                                .cornerRadius(8)
-                        case .failure:
-                            Color.secondary.frame(height: 120)
-                        @unknown default:
-                            EmptyView()
+                    // Sized container (like the working library grid) so the artwork area is
+                    // always the desired large size, even while the image is loading.
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color.gray.opacity(0.1))
+                        .frame(maxWidth: .infinity, maxHeight: 540)
+                        .overlay {
+                            Group {
+                                if let img = coverImage {
+                                    Image(nsImage: img)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .padding(16)
+                                } else if isLoadingCover {
+                                    ProgressView()
+                                } else {
+                                    Image(systemName: "photo")
+                                        .font(.system(size: 60))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
                         }
-                    }
+                        .task(id: item.id) {
+                            isLoadingCover = true
+                            coverImage = nil
+                            let didStart = coverURL.startAccessingSecurityScopedResource()
+                            defer { if didStart { coverURL.stopAccessingSecurityScopedResource() } }
+                            coverImage = NSImage(contentsOf: coverURL)
+                            isLoadingCover = false
+                        }
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -472,12 +488,15 @@ private struct LibraryTab: View {
                                         .frame(maxWidth: .infinity)
                                         .overlay {
                                             Group {
+                                                // Library grid artwork re-enabled (covers in the book grid).
+                                                // Now Playing artwork and PlayerTab cover are still disabled
+                                                // while we troubleshoot playback failures for audiobooks that have art.
                                                 if let coverURL = coreStore.coverURL(for: item) {
                                                     AsyncImage(url: coverURL) { phase in
                                                         if let image = phase.image {
                                                             image
                                                                 .resizable()
-                                                                .scaledToFill()
+                                                                .scaledToFit()
                                                         } else if phase.error != nil {
                                                             Color.gray.opacity(0.2)
                                                         } else {
@@ -485,10 +504,10 @@ private struct LibraryTab: View {
                                                         }
                                                     }
                                                 } else {
-                                                    // Placeholder
+                                                    // Placeholder when no cover image
                                                     Color.gray.opacity(0.15)
                                                         .overlay {
-                                                            Image(systemName: "book.closed.fill")
+                                                            Image(systemName: "book-closed.fill")
                                                                 .font(.system(size: 42))
                                                                 .foregroundStyle(.secondary.opacity(0.6))
                                                         }
