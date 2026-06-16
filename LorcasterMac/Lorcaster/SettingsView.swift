@@ -3,6 +3,7 @@ import LorcasterCore
 
 struct SettingsView: View {
     @AppStorage("showDockIcon") private var showDockIcon = false
+    @AppStorage("smartRewindEnabled") private var smartRewindEnabled = true
     @Bindable var coreStore: CoreStore
     @State private var showClearConfirm = false
 
@@ -48,6 +49,13 @@ struct SettingsView: View {
                 }
 
                 Text("\(coreStore.libraryCount) folder\(coreStore.libraryCount == 1 ? "" : "s") • \(coreStore.items.count) book\(coreStore.items.count == 1 ? "" : "s"). Remove individual folders from the chips in the Library tab.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Playback") {
+                Toggle("Smart Rewind on Resume", isOn: $smartRewindEnabled)
+                Text("When resuming, skip back a few seconds based on how long playback was paused (up to 30s) to help you re-orient. Manually scrubbing or skipping cancels it.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -112,7 +120,7 @@ struct SettingsView: View {
         } message: {
             Text("This removes all \(coreStore.items.count) book\(coreStore.items.count == 1 ? "" : "s") and every library folder from Lorcaster. Your audio files on disk are not deleted. This can’t be undone.")
         }
-        .frame(width: 460, height: 540)
+        .frame(width: 460, height: 620)
         .padding()
     }
 }

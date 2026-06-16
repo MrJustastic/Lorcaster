@@ -118,7 +118,7 @@ Because this will be a complete native rewrite (no web layer, no Node), we are d
   - ~~Queue / playlist support.~~ *(Descoped: a basic play/next/enqueue queue exists; full queue editing is not needed without podcasts.)*
   - Progress tracking and syncing (local + report to server for remote clients).
   - Now Playing integration (macOS Control Center, media keys).
-  - Background playback and interruptions.
+  - Background playback and interruptions. *(macOS: background playback already works via the menu-bar agent. Added sleep/wake + stall/end handling; iOS-style `AVAudioSession` interruptions don't apply. Output-device-change pause is a planned follow-up.)*
 - UI: Chapter list, waveform if available, speed/sleep controls, queue editor.
 - Handle the same audio formats as the current app (leveraging bundled ffmpeg for tricky cases or transcoding).
 - **Parity goal**: Local Mac user can play exactly as they do in the current web client, with the same controls and behaviors.
@@ -129,7 +129,9 @@ Because this will be a complete native rewrite (no web layer, no Node), we are d
 - **Auto-scroll chapter list**: the PlayerTab chapter list uses a `ScrollViewReader` and centers the current chapter as it advances (`onChange` of `currentChapter`).
 - **Sleep timer**: `PlayerController` supports a wall-clock duration (Task-based, `sleepTimerEndDate`/`sleepTimerRemaining`) or end-of-current-chapter (handled in the time observer); cancelled on stop. PlayerTab adds a Sleep menu (Off/5/15/30/45/60 min / End of Chapter) that shows the active state + remaining minutes.
 - **Scrubber + skip**: PlayerTab gained a chapter scrub `Slider` (tracks `currentTime`, seeks once on release via `onEditingChanged` so it doesn't spam seeks) with current/duration labels, and **Back 15 / Forward 30** buttons (`PlayerController.skipBackward/skipForward`). The embedded-chapter enrichment now sets `duration` to the matched chapter's duration so the time display + scrubber span the current chapter consistently (matching `playChapter`).
-- **Intentionally deferred**: System Now Playing artwork (`MPMediaItemArtwork`) stays disabled — enabling it previously broke playback for books with art (see the bisecting notes in `LorcasterPlayer.load`). Queue editing is descoped (no podcasts). This commit is a known-good save point before any Now Playing artwork experiments.
+- **Background & interruptions (macOS-appropriate)**: background playback already works (singleton player + LSUIElement agent — closing the window doesn't stop audio). Added: pause+save on `NSWorkspace.willSleep` (no auto-resume on wake); authoritative `AVPlayerItemDidPlayToEndTime` end-of-file handling (deduped against the time-observer threshold via `lastChapterSwitchTime`) plus stall-recovery and failure logging (per-item observer tokens cleaned up on stop/load). iOS-style `AVAudioSession` interruptions/background entitlements are N/A on macOS. Output-device-change pause (e.g. headphones unplugged) is a planned follow-up.
+- **Smart rewind on resume**: on play after a pause/sleep, rewind a stepped amount by elapsed-paused time (0 / 3 / 10 / 15 / 20 / 30s caps at <10s / <1m / <5m / <30m / <6h / ≥6h), clamped to the chapter start; cancelled if the user manually scrubs/skips (clears `pausedAt`). Settings → Playback toggle `smartRewindEnabled` (default on). Not an Audiobookshelf parity feature (it has only a fixed jump-back) but standard in audiobook players (Audible/BookPlayer).
+- **Intentionally deferred**: System Now Playing artwork (`MPMediaItemArtwork`) stays disabled — enabling it previously broke playback for books with art (see the bisecting notes in `LorcasterPlayer.load`). Queue editing is descoped (no podcasts).
 
 ### Phase 4: Embedded Server & Remote Client Support (4–6 weeks)
 - Full HTTP server + the API surface needed by the separate consumption apps (match current API where practical for compatibility).

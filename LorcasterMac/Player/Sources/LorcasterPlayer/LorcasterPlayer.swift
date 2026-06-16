@@ -52,6 +52,11 @@ public final class PlayerController {
     private var avPlayer: AVPlayer?
     private var timeObserver: Any?
 
+    // When playback was last paused/interrupted, for elapsed-based "smart rewind" on resume.
+    private var pausedAt: Date?
+    // NotificationCenter tokens for the current AVPlayerItem (end/stall/failed); cleared on stop/load.
+    private var itemObservers: [NSObjectProtocol] = []
+
     // For Now Playing integration
     private var nowPlayingInfo: [String: Any] = [:]
 
@@ -59,7 +64,19 @@ public final class PlayerController {
     // Stored separately so we can re-attach it safely without full preservation logic yet.
     private var currentArtwork: MPMediaItemArtwork?
 
-    private init() {}
+    private init() {
+        // macOS sleep handling: pause + persist before the machine sleeps (AVPlayer is unreliable
+        // across sleep, and we want the resume point saved). We intentionally do NOT auto-resume on wake.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.handleWillSleep() }
+        }
+    }
+
+    private func handleWillSleep() {
+        if isPlaying { pause() }   // pause() saves progress + records pausedAt (enables smart rewind on resume)
+    }
 
     public func load(_ item: CastItem) {
         stop()
@@ -139,6 +156,7 @@ public final class PlayerController {
         let playerItem = AVPlayerItem(asset: asset)
         let p = AVPlayer(playerItem: playerItem)
         avPlayer = p
+        registerItemObservers(for: playerItem)
 
         // Disable external/AirPlay playback. This app is a local audiobook player
         // (with server for other clients). Leaving it enabled causes internal
@@ -563,6 +581,55 @@ public final class PlayerController {
         playChapter(target)
     }
 
+    // MARK: - Playback end / error handling (Phase 3)
+
+    /// Registers end/stall/failure observers for the given player item, replacing any from a prior item.
+    private func registerItemObservers(for item: AVPlayerItem) {
+        removeItemObservers()
+        let center = NotificationCenter.default
+
+        itemObservers.append(center.addObserver(
+            forName: AVPlayerItem.didPlayToEndTimeNotification, object: item, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.handleItemDidPlayToEnd() }
+        })
+
+        itemObservers.append(center.addObserver(
+            forName: AVPlayerItem.playbackStalledNotification, object: item, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.handlePlaybackStalled() }
+        })
+
+        itemObservers.append(center.addObserver(
+            forName: AVPlayerItem.failedToPlayToEndTimeNotification, object: item, queue: .main
+        ) { note in
+            // Extract the (Sendable) message on the delivery queue; don't capture the Notification.
+            let message = (note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error)?
+                .localizedDescription ?? "unknown"
+            print("[LorcasterPlayer] Item failed to play to end: \(message)")
+        })
+    }
+
+    private func removeItemObservers() {
+        for token in itemObservers { NotificationCenter.default.removeObserver(token) }
+        itemObservers.removeAll()
+    }
+
+    /// Authoritative "the current file finished" signal. Deduped against the time-observer threshold
+    /// (which fires ~0.3s earlier and sets lastChapterSwitchTime) so we don't advance twice.
+    private func handleItemDidPlayToEnd() {
+        if Date().timeIntervalSince(lastChapterSwitchTime) < 1.0 { return }
+        advanceToNextInQueueOrStop()
+    }
+
+    /// On a transient stall, nudge playback to resume if we believe we should be playing.
+    private func handlePlaybackStalled() {
+        guard isPlaying, let p = avPlayer else { return }
+        p.play()
+        p.rate = rate
+        print("[LorcasterPlayer] Recovered from playback stall")
+    }
+
     // MARK: - Skip (Phase 3)
 
     /// Skips forward within the current chapter (clamped by seek()).
@@ -573,6 +640,39 @@ public final class PlayerController {
     /// Skips backward within the current chapter.
     public func skipBackward(_ seconds: TimeInterval = 15) {
         seek(to: max(0, currentTime - seconds))
+    }
+
+    // MARK: - Smart rewind on resume (Phase 3)
+
+    private var smartRewindEnabled: Bool {
+        UserDefaults.standard.object(forKey: "smartRewindEnabled") == nil
+            ? true   // default on
+            : UserDefaults.standard.bool(forKey: "smartRewindEnabled")
+    }
+
+    /// On resume, rewinds a little based on how long playback was paused (re-orients the listener).
+    /// Cancelled if the user manually scrubbed/skipped (which clears `pausedAt`).
+    private func applySmartRewindIfNeeded() {
+        guard let pausedAt, currentItem != nil else { self.pausedAt = nil; return }
+        let elapsed = Date().timeIntervalSince(pausedAt)
+        self.pausedAt = nil
+        guard smartRewindEnabled else { return }
+        let rewind = smartRewindAmount(forPausedSeconds: elapsed)
+        if rewind > 0, currentTime > 0 {
+            seek(to: max(0, currentTime - rewind))
+        }
+    }
+
+    /// Stepped rewind amount: the longer the pause, the more we rewind, capped at 30s.
+    private func smartRewindAmount(forPausedSeconds seconds: TimeInterval) -> TimeInterval {
+        switch seconds {
+        case ..<10:     return 0
+        case ..<60:     return 3
+        case ..<300:    return 10    // < 5 min
+        case ..<1800:   return 15    // < 30 min
+        case ..<21600:  return 20    // < 6 hr
+        default:        return 30    // cap
+        }
     }
 
     // MARK: - Resume progress (Phase 3)
@@ -763,6 +863,7 @@ public final class PlayerController {
             return
         }
         guard !isPlaying else { return }
+        applySmartRewindIfNeeded()
         isPlaying = true
         p.rate = rate
         p.play()
@@ -773,6 +874,7 @@ public final class PlayerController {
     public func pause() {
         guard isPlaying else { return }
         isPlaying = false
+        pausedAt = Date()   // for smart rewind on resume
         avPlayer?.pause()
         updateNowPlaying()
         persistProgress()
@@ -787,6 +889,8 @@ public final class PlayerController {
         // Save where we are before tearing down (covers the Stop button, app quit, and load() switching books).
         persistProgress()
         cancelSleepTimer()
+        removeItemObservers()
+        pausedAt = nil
 
         isPlaying = false
         currentTime = 0
@@ -816,6 +920,7 @@ public final class PlayerController {
     }
 
     public func seek(to time: TimeInterval) {
+        pausedAt = nil   // an explicit reposition cancels any pending smart rewind
         let clamped = min(max(0, time), duration > 0 ? duration : time)
         currentTime = clamped
         guard let p = avPlayer else { return }
