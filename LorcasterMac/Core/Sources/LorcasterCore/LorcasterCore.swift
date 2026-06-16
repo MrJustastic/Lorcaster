@@ -17,6 +17,24 @@ public struct CastItem: Identifiable, Hashable, Codable, Sendable {
     public var coverRelativePath: String? // relative path to a cover image if detected, e.g. "Book/cover.jpg"
     public var chapters: [Chapter]     // for multi-file books or embedded chapters; each may have its own relativePath
 
+    // MARK: - Phase 2 rich metadata (parity with Audiobookshelf provider fields)
+    // All optional / defaulted so older persisted items and existing call sites keep working.
+    public var subtitle: String?
+    public var narrator: String?
+    public var series: String?
+    public var seriesSequence: String?      // string to preserve values like "1.5"
+    public var publishedYear: String?
+    public var publisher: String?
+    public var bookDescription: String?     // long description / summary (named to avoid CustomStringConvertible clash)
+    public var genres: [String]
+    public var language: String?
+    public var isbn: String?
+    public var asin: String?
+    public var remoteCoverURL: String?      // provider-supplied cover URL (used when no local cover image exists)
+    /// True once the user has manually edited this book's chapters. The player then uses the stored
+    /// chapter list verbatim instead of re-deriving embedded markers from the audio file on load.
+    public var userEditedChapters: Bool
+
     public init(
         id: UUID = UUID(),
         title: String,
@@ -25,7 +43,20 @@ public struct CastItem: Identifiable, Hashable, Codable, Sendable {
         source: String,
         relativePath: String? = nil,
         coverRelativePath: String? = nil,
-        chapters: [Chapter] = []
+        chapters: [Chapter] = [],
+        subtitle: String? = nil,
+        narrator: String? = nil,
+        series: String? = nil,
+        seriesSequence: String? = nil,
+        publishedYear: String? = nil,
+        publisher: String? = nil,
+        bookDescription: String? = nil,
+        genres: [String] = [],
+        language: String? = nil,
+        isbn: String? = nil,
+        asin: String? = nil,
+        remoteCoverURL: String? = nil,
+        userEditedChapters: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -35,6 +66,49 @@ public struct CastItem: Identifiable, Hashable, Codable, Sendable {
         self.relativePath = relativePath
         self.coverRelativePath = coverRelativePath
         self.chapters = chapters
+        self.subtitle = subtitle
+        self.narrator = narrator
+        self.series = series
+        self.seriesSequence = seriesSequence
+        self.publishedYear = publishedYear
+        self.publisher = publisher
+        self.bookDescription = bookDescription
+        self.genres = genres
+        self.language = language
+        self.isbn = isbn
+        self.asin = asin
+        self.remoteCoverURL = remoteCoverURL
+        self.userEditedChapters = userEditedChapters
+    }
+
+    /// Convenience: "Series Name #1.5" when both present, else just the series name.
+    public var seriesDisplay: String? {
+        guard let series, !series.isEmpty else { return nil }
+        if let seq = seriesSequence, !seq.isEmpty { return "\(series) #\(seq)" }
+        return series
+    }
+
+    /// Returns a copy with metadata fields filled from an online provider result.
+    /// Non-destructive: a provider value overrides only when present; the local file's
+    /// duration and on-disk paths are always preserved (the file is authoritative for playback).
+    public func merging(_ r: BookSearchResult) -> CastItem {
+        var copy = self
+        let newTitle = r.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !newTitle.isEmpty { copy.title = newTitle }
+        copy.subtitle = r.subtitle ?? copy.subtitle
+        copy.author = r.author ?? copy.author
+        copy.narrator = r.narrator ?? copy.narrator
+        copy.publisher = r.publisher ?? copy.publisher
+        copy.publishedYear = r.publishedYear ?? copy.publishedYear
+        copy.bookDescription = r.description ?? copy.bookDescription
+        if !r.genres.isEmpty { copy.genres = r.genres }
+        copy.series = r.series ?? copy.series
+        copy.seriesSequence = r.seriesSequence ?? copy.seriesSequence
+        copy.language = r.language ?? copy.language
+        copy.isbn = r.isbn ?? copy.isbn
+        copy.asin = r.asin ?? copy.asin
+        copy.remoteCoverURL = r.coverURL ?? copy.remoteCoverURL
+        return copy
     }
 }
 
@@ -42,6 +116,9 @@ public struct CastItem: Identifiable, Hashable, Codable, Sendable {
 extension CastItem {
     private enum CodingKeys: String, CodingKey {
         case id, title, author, duration, source, relativePath, coverRelativePath, chapters
+        case subtitle, narrator, series, seriesSequence, publishedYear, publisher
+        case bookDescription, genres, language, isbn, asin, remoteCoverURL
+        case userEditedChapters
     }
 
     public init(from decoder: Decoder) throws {
@@ -54,6 +131,19 @@ extension CastItem {
         relativePath = try container.decodeIfPresent(String.self, forKey: .relativePath)
         coverRelativePath = try container.decodeIfPresent(String.self, forKey: .coverRelativePath)
         chapters = try container.decodeIfPresent([Chapter].self, forKey: .chapters) ?? []
+        subtitle = try container.decodeIfPresent(String.self, forKey: .subtitle)
+        narrator = try container.decodeIfPresent(String.self, forKey: .narrator)
+        series = try container.decodeIfPresent(String.self, forKey: .series)
+        seriesSequence = try container.decodeIfPresent(String.self, forKey: .seriesSequence)
+        publishedYear = try container.decodeIfPresent(String.self, forKey: .publishedYear)
+        publisher = try container.decodeIfPresent(String.self, forKey: .publisher)
+        bookDescription = try container.decodeIfPresent(String.self, forKey: .bookDescription)
+        genres = try container.decodeIfPresent([String].self, forKey: .genres) ?? []
+        language = try container.decodeIfPresent(String.self, forKey: .language)
+        isbn = try container.decodeIfPresent(String.self, forKey: .isbn)
+        asin = try container.decodeIfPresent(String.self, forKey: .asin)
+        remoteCoverURL = try container.decodeIfPresent(String.self, forKey: .remoteCoverURL)
+        userEditedChapters = try container.decodeIfPresent(Bool.self, forKey: .userEditedChapters) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -66,6 +156,19 @@ extension CastItem {
         try container.encodeIfPresent(relativePath, forKey: .relativePath)
         try container.encodeIfPresent(coverRelativePath, forKey: .coverRelativePath)
         try container.encode(chapters, forKey: .chapters)
+        try container.encodeIfPresent(subtitle, forKey: .subtitle)
+        try container.encodeIfPresent(narrator, forKey: .narrator)
+        try container.encodeIfPresent(series, forKey: .series)
+        try container.encodeIfPresent(seriesSequence, forKey: .seriesSequence)
+        try container.encodeIfPresent(publishedYear, forKey: .publishedYear)
+        try container.encodeIfPresent(publisher, forKey: .publisher)
+        try container.encodeIfPresent(bookDescription, forKey: .bookDescription)
+        try container.encode(genres, forKey: .genres)
+        try container.encodeIfPresent(language, forKey: .language)
+        try container.encodeIfPresent(isbn, forKey: .isbn)
+        try container.encodeIfPresent(asin, forKey: .asin)
+        try container.encodeIfPresent(remoteCoverURL, forKey: .remoteCoverURL)
+        try container.encode(userEditedChapters, forKey: .userEditedChapters)
     }
 }
 
@@ -87,10 +190,10 @@ public struct Library: Identifiable, Hashable, Codable, Sendable {
 /// For embedded chapters in a single file, `relativePath` may be nil (use the item's relativePath).
 public struct Chapter: Identifiable, Hashable, Codable, Sendable {
     public let id: UUID
-    public let title: String
-    public let startTime: TimeInterval
-    public let duration: TimeInterval?
-    public let relativePath: String?   // audio file for this chapter, relative to library root
+    public var title: String
+    public var startTime: TimeInterval
+    public var duration: TimeInterval?
+    public let relativePath: String?   // audio file for this chapter, relative to library root (immutable: tied to a file)
 
     public init(id: UUID = UUID(), title: String, startTime: TimeInterval, duration: TimeInterval? = nil, relativePath: String? = nil) {
         self.id = id
@@ -226,14 +329,23 @@ public actor LibraryScanner {
 
             let bookRelPath = relDir.isEmpty ? sortedFiles.first.flatMap { Self.relativePath(from: root, to: $0) } : relDir
 
+            let rawTitle = bookTitle ?? (relDir.isEmpty ? "Untitled Book" : URL(fileURLWithPath: relDir).lastPathComponent)
+
+            // Detect an Audible ASIN from the folder/file/title (e.g. "Title [B08G9PRS1K]") so books
+            // are exact-matchable without opening Get Info. Strip the token from the displayed title.
+            let detectionSource = "\(rawTitle) \(relDir) \(sortedFiles.first?.lastPathComponent ?? "")"
+            let detectedASIN = AudibleProvider.detectASIN(in: detectionSource)
+            let cleanedTitle = Self.cleanedTitle(rawTitle, removingASIN: detectedASIN)
+
             let item = CastItem(
-                title: bookTitle ?? (relDir.isEmpty ? "Untitled Book" : URL(fileURLWithPath: relDir).lastPathComponent),
+                title: cleanedTitle,
                 author: bookAuthor,
                 duration: totalDuration,
                 source: folderName,
                 relativePath: bookRelPath,
                 coverRelativePath: bookCoverRel,
-                chapters: chapters
+                chapters: chapters,
+                asin: detectedASIN
             )
             continuation.yield(item)
         }
@@ -269,6 +381,20 @@ public actor LibraryScanner {
         let finalTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? fallbackFileURL.deletingPathExtension().lastPathComponent
         let finalAuthor = artist?.trimmingCharacters(in: .whitespacesAndNewlines)
         return (finalTitle, finalAuthor)
+    }
+
+    /// Removes a detected ASIN token (bracketed, parenthesized, or a trailing bare token) from a
+    /// title for cleaner display. Falls back to the original title if cleaning would empty it.
+    private static func cleanedTitle(_ title: String, removingASIN asin: String?) -> String {
+        guard let asin, !asin.isEmpty else { return title }
+        var t = title
+        for token in ["[\(asin)]", "(\(asin))", "{\(asin)}", asin] {
+            t = t.replacingOccurrences(of: token, with: " ", options: [.caseInsensitive])
+        }
+        // Collapse runs of whitespace and trim leftover separators.
+        t = t.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        t = t.trimmingCharacters(in: CharacterSet(charactersIn: " -_.[](){}"))
+        return t.isEmpty ? title : t
     }
 
     private static func relativePath(from root: URL, to file: URL) -> String {
@@ -307,6 +433,39 @@ public actor LibraryScanner {
         }
         return nil
     }
+
+    /// Loads embedded chapter markers (e.g. from an .m4b/mp4/m4a) at a file URL using AVFoundation.
+    /// Chapters have file-absolute startTimes and nil relativePath (they live inside a single file).
+    /// Returns an empty array if the file has no chapter metadata. Used by the chapter editor to
+    /// populate the real chapter list for single-file books.
+    public static func loadEmbeddedChapters(at url: URL) async -> [Chapter] {
+        let asset = AVURLAsset(url: url)
+        guard let locales = try? await asset.load(.availableChapterLocales),
+              let locale = locales.first else {
+            return []
+        }
+        do {
+            let groups = try await asset.loadChapterMetadataGroups(
+                withTitleLocale: locale,
+                containingItemsWithCommonKeys: [.commonKeyTitle]
+            )
+            var result: [Chapter] = []
+            for group in groups {
+                let titleItem = group.items.first(where: { $0.commonKey == .commonKeyTitle })
+                let titleStr: String = if let titleItem {
+                    (try? await titleItem.load(.stringValue))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Chapter"
+                } else {
+                    "Chapter"
+                }
+                let start = group.timeRange.start.seconds
+                let dur = group.timeRange.duration.seconds
+                result.append(Chapter(title: titleStr, startTime: max(0, start), duration: dur > 0 ? dur : nil))
+            }
+            return result.sorted { $0.startTime < $1.startTime }
+        } catch {
+            return []
+        }
+    }
 }
 
 @MainActor
@@ -317,6 +476,13 @@ public final class CoreStore {
         CastItem(title: "Sample Cast 2", duration: 567, source: "remote")
     ]
     public var lastError: String?
+
+    /// When true (default), a detected local cover image is preferred for display; when false,
+    /// artwork fetched from an online metadata provider is preferred. Persisted across launches.
+    public var preferLocalArtwork: Bool = true {
+        didSet { UserDefaults.standard.set(preferLocalArtwork, forKey: Self.preferLocalArtworkKey) }
+    }
+    private static let preferLocalArtworkKey = "LorcasterPreferLocalArtwork"
 
     /// Display names of currently bookmarked library roots (last path component).
     public private(set) var libraryRootNames: [String] = []
@@ -401,6 +567,22 @@ public final class CoreStore {
         return full
     }
 
+    /// Best available cover URL for display. The order honors the `preferLocalArtwork` setting:
+    /// when true (default) a detected local cover image wins, falling back to provider artwork;
+    /// when false the provider's remote artwork wins, falling back to the local cover.
+    /// Returns a file URL (security scope started) or an https URL, or nil. Both are usable directly
+    /// by AsyncImage; callers loading via NSImage should branch on `isFileURL` so remote URLs are
+    /// fetched asynchronously rather than blocking.
+    public func bestCoverURL(for item: CastItem) -> URL? {
+        let local = coverURL(for: item)
+        let remote: URL? = {
+            guard let r = item.remoteCoverURL?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !r.isEmpty else { return nil }
+            return URL(string: r)
+        }()
+        return preferLocalArtwork ? (local ?? remote) : (remote ?? local)
+    }
+
     public static let shared = CoreStore()
 
     // Persistence keys (v2 for enhanced CastItem with author/relative/cover fields + Library model prep)
@@ -412,6 +594,9 @@ public final class CoreStore {
     private var knownKeys: Set<String> = []
 
     private init() {
+        if UserDefaults.standard.object(forKey: Self.preferLocalArtworkKey) != nil {
+            preferLocalArtwork = UserDefaults.standard.bool(forKey: Self.preferLocalArtworkKey)
+        }
         loadBookmarksAndItems()
     }
 
@@ -601,6 +786,78 @@ public final class CoreStore {
         persistBookmarks()
         persistItems()
         isScanning = false
+    }
+
+    // MARK: - Metadata editing (Phase 2)
+
+    /// Replaces the stored item that shares `updated.id` and persists. Used by the Get Info / Match
+    /// editor for both manual edits and applied online-provider results. Rebuilds the dedup key set
+    /// since edited fields (author/title/relativePath) feed into the key.
+    public func updateItem(_ updated: CastItem) {
+        guard let index = items.firstIndex(where: { $0.id == updated.id }) else { return }
+        items[index] = updated
+        knownKeys = Set(items.map { keyFor($0) })
+        persistItems()
+        lastError = nil
+    }
+
+    // MARK: - Batch auto-match by ASIN (Phase 2)
+
+    /// True while a batch auto-match run is in progress.
+    public private(set) var isAutoMatching = false
+    /// Number of books processed so far in the current/last run.
+    public private(set) var autoMatchDone = 0
+    /// Total books targeted by the current/last run.
+    public private(set) var autoMatchTotal = 0
+    /// Human-readable result of the last completed run (nil until one finishes).
+    public private(set) var autoMatchSummary: String?
+
+    /// Count of books that carry an ASIN and can therefore be auto-matched.
+    public var asinMatchableCount: Int {
+        items.reduce(0) { $0 + ((($1.asin?.isEmpty) == false) ? 1 : 0) }
+    }
+
+    /// Enriches every book that has an ASIN by looking it up via Audnexus and merging the result
+    /// (non-destructive: local duration/paths are preserved). Runs sequentially to stay polite to
+    /// the API; publishes live progress via the observable counters. Safe to call once at a time.
+    public func autoMatchAllByASIN() async {
+        guard !isAutoMatching else { return }
+
+        let targets = items.filter { ($0.asin?.isEmpty) == false }
+        autoMatchTotal = targets.count
+        autoMatchDone = 0
+        autoMatchSummary = nil
+
+        guard !targets.isEmpty else {
+            autoMatchSummary = "No books with an ASIN to match. Try Rescan, or set an ASIN in Get Info."
+            return
+        }
+
+        isAutoMatching = true
+        lastError = nil
+        let provider = AudibleProvider()
+        var matched = 0
+
+        for target in targets {
+            if let asin = target.asin, !asin.isEmpty {
+                do {
+                    let results = try await provider.searchByIdentifier(asin)
+                    if let result = results.first,
+                       let index = items.firstIndex(where: { $0.id == target.id }) {
+                        items[index] = items[index].merging(result)
+                        matched += 1
+                    }
+                } catch {
+                    // Skip individual failures (network/not-found) and continue the batch.
+                }
+            }
+            autoMatchDone += 1
+        }
+
+        knownKeys = Set(items.map { keyFor($0) })
+        persistItems()
+        isAutoMatching = false
+        autoMatchSummary = "Matched \(matched) of \(targets.count) book\(targets.count == 1 ? "" : "s") by ASIN."
     }
 
     // MARK: - Private implementation

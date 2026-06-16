@@ -175,7 +175,10 @@ public final class PlayerController {
         // per-file chapters list provided by the scanner (with relativePaths).
         Task { [weak self] in
             guard let self else { return }
-            let shouldEnrichEmbedded = self.chapters.count <= 1 || self.chapters.allSatisfy { $0.relativePath == nil }
+            // Respect user-edited chapters: when the user has manually defined chapters, use the stored
+            // list verbatim and skip re-deriving embedded markers from the file.
+            let shouldEnrichEmbedded = !item.userEditedChapters &&
+                (self.chapters.count <= 1 || self.chapters.allSatisfy { $0.relativePath == nil })
             if shouldEnrichEmbedded {
                 let loadedChapters = await self.loadChapters(from: asset)
                 if self.currentItem?.id == item.id {

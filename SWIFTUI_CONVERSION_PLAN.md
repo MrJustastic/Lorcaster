@@ -1,6 +1,6 @@
 # Lorcaster → Native macOS SwiftUI App Conversion Plan
 
-**Status**: Phase 0 complete (traditional .xcodeproj + menu bar + modular SPM). Phase 1 (Library Management & Scanning + real local playback) actively implemented: real NSOpenPanel + security-scoped bookmarks + recursive AVAsset scanner with live AsyncStream updates + full add/remove/rescan/clear + filters/grid/list in LibraryTab + CoreStore + LibraryScanner actor. PlayerController now performs **real AVPlayer playback** of files resolved via CoreStore.playableURL (using bookmark + relativePath). Rate control, seek, time observer, and natural end all wired. (June 2026)  
+**Status**: Phase 0 complete (traditional .xcodeproj + menu bar + modular SPM). Phase 1 (Library + real playback + chapters + PlayerTab artwork) substantially complete: full library management + live scanner + real AVPlayer + robust chapter navigation for both multi-file books and embedded markers inside .m4b files + 3x larger .scaledToFit() now-playing artwork in PlayerTab (reliable scoped NSImage loading + sized Rounded container) + window minHeight raised so the large cover area is usable by default. System Now Playing artwork (MPMediaItemArtwork) intentionally left disabled for playback stability. (Current)  
 **Project**: Lorcaster (personal fork of Audiobookshelf)  
 **Target**: A single, fully self-contained macOS application built with Swift + SwiftUI.  
 **Core Vision**: The "iTunes of Audiobooks" — a polished, native macOS app that handles library management, acts as a local server for other devices, *and* includes a full-featured built-in player. Users install one .app and never touch the terminal, Node.js, npm, web browsers for admin, or any external dependencies.
@@ -86,13 +86,26 @@ Because this will be a complete native rewrite (no web layer, no Node), we are d
 - Match current folder structure conventions and auto-detection.
 - **Parity goal (achieved for MVP)**: User adds real audiobook folders via native dialog → items appear live with metadata → click to play the actual audio file in the built-in player with speed/scrub controls. Covers metadata detection is basic (filename heuristics + embedded); full providers in Phase 2.
 
-### Phase 2: Metadata, Providers & Editing (3–4 weeks)
-- Implement metadata providers (Audible, iTunes, MusicBrainz, etc.) using URLSession + parsing.
-- Chapter support (detection, editing, display in player).
-- OPML import/export for podcasts.
-- Full metadata editing UI (titles, authors, covers, descriptions, etc. — matching current web capabilities).
-- Author/series grouping and management.
+### Phase 2: Metadata, Providers & Editing (3–4 weeks) — STARTED
+- Implement metadata providers (Audible, iTunes, MusicBrainz, etc.) using URLSession + parsing. **[Audible done]**
+- Chapter support (detection, editing, display in player). **[editing done]** *(detection/display were done in Phase 1)*
+- OPML import/export for podcasts. *(pending)*
+- Full metadata editing UI (titles, authors, covers, descriptions, etc. — matching current web capabilities). **[Get Info editor done]**
+- Author/series grouping and management. **[grouping UI done]**
 - **Parity goal**: All current metadata features from the web UI.
+
+**Progress (first slice complete):**
+- `CastItem` extended with rich metadata: `subtitle`, `narrator`, `series`, `seriesSequence`, `publishedYear`, `publisher`, `bookDescription`, `genres`, `language`, `isbn`, `asin`, `remoteCoverURL` (robust Codable; older persisted items decode fine; persistence key unchanged at `.v2`).
+- New `Core/Sources/LorcasterCore/MetadataProvider.swift`: normalized `BookSearchResult`, a `MetadataProvider` protocol (extensible for iTunes/Google Books/etc.), `AudibleProvider` (two-step: Audible catalog product search → Audnexus ASIN enrichment, concurrent + order-preserving), and a `@MainActor @Observable MetadataService` facade with provider selection. Mirrors the Node `server/providers/Audible.js` field shape for parity. Validated live (e.g. "Project Hail Mary" → narrator/year/publisher/ASIN/cover/duration all populated).
+- `CastItem.merging(_:)` (non-destructive provider merge; local file duration/paths stay authoritative) + `CoreStore.updateItem(_:)` (replace-by-id, rebuild dedup keys, persist).
+- `BookInfoView` "Get Info / Match" sheet in `Lorcaster/MainControlsView.swift`: left = editable details form (title/subtitle/author/narrator/series/year/publisher/language/genres/ISBN/ASIN/description + cover preview), right = online provider search with clickable results that fill the form. Reached via the Library grid's right-click → "Get Info…". Saving writes the merged item back through `CoreStore`.
+- Added `com.apple.security.network.client` entitlement (required for provider HTTP calls under the sandbox).
+- Provider artwork now displays everywhere: `CoreStore.bestCoverURL(for:)` resolves the display cover, honoring a **"Prefer Local Artwork"** setting (`CoreStore.preferLocalArtwork`, default on, persisted): on → local cover wins (remote fallback); off → provider remote art wins (local fallback). Exposed as a toggle in Settings → Artwork. The Library grid and PlayerTab both use it (PlayerTab fetches remote covers asynchronously so the main actor isn't blocked; its load is keyed on the resolved URL so toggling the setting re-renders the now-playing art).
+- **Precise ASIN lookup**: the `MetadataProvider` protocol gained `identifierLabel` + `searchByIdentifier(_:)` (default falls back to a title search). `AudibleProvider` exposes ASIN as its identifier and looks it up directly via Audnexus. `AudibleProvider.detectASIN(in:)` extracts an ASIN from common Audible folder naming (`Title [B08G9PRS1K]`, `(…)`, or a bare `B0…` token). The Get Info match panel now has an "ASIN — exact match" field that auto-prefills from a stored ASIN or one detected in the title/folder name, and overrides title/author when set for a single-item precise lookup. The **scanner** also auto-detects an ASIN from each book's folder/file/title during scanning, stores it on `CastItem.asin`, and strips the `[ASIN]` token from the displayed title (`LibraryScanner.cleanedTitle`) — so freshly scanned (or rescanned) books are exact-matchable out of the box. (Existing libraries pick this up on Rescan.)
+- **Auto-Match All by ASIN** (batch): `CoreStore.autoMatchAllByASIN()` enriches every book that carries an ASIN via Audnexus and merges the result (non-destructive). Runs sequentially (polite to the API) with live observable progress (`isAutoMatching`, `autoMatchDone`/`autoMatchTotal`, `autoMatchSummary`, `asinMatchableCount`). Exposed as a button in Settings → Metadata with inline progress + a result summary; disabled while running or when no book has an ASIN.
+- **Author/Series browsing**: a segmented "Books / Authors / Series" mode picker in the Library header. Authors mode groups A→Z (Unknown Author last); The library is a fixed **Books** view with a **"Group by" dropdown** (None / Author / Series), persisted via `@AppStorage("libraryGroupBy")` and defaulting to **Series** (reopens to the last-used grouping). "None" is the flat all-books grid (with the Sort menu); Author/Series use the grouped drill-in browsing. The Series grouping is a single alphabetical grid that mixes genuine multi-book series (drill-in cards) with standalone books (which play directly) — no separate "Singles" section. A series is "real" when it has 2+ books or any book carries a series position/sequence (the signal that distinguishes a real series from a one-off that merely has a series name); everything else is listed as an individual book among the series, sorted by title. Series detail orders books by numeric sequence ("1" < "1.5" < "2"). The flat **Books** view remains for an ungrouped layout. The book card was extracted into a reusable `BookCard` (shared by all modes); cards also show series + sequence. **Authors/Series are now navigable**: each mode shows a grid of group cards (representative "stacked" artwork from the first book + name + book count) that drill into a focused detail view (back button, header with artwork + count, that group's books). Selection is held by group id and resets when switching modes; `LibraryGroup` is file-scoped and reused by the card views (`GroupCard`/`GroupArtwork`). Search spans title/author/series/folder/chapters.
+- **Chapter editing**: `Chapter` made mutable (title/startTime/duration) and `CastItem.userEditedChapters` added (robust Codable). The player now respects that flag — when set it uses the stored chapter list verbatim instead of re-deriving embedded `.m4b` markers on load. `LibraryScanner.loadEmbeddedChapters(at:)` (Core) loads embedded markers from a file URL so the editor can populate the real list. New `ChapterEditorView` sheet (reached via a book's right-click → "Edit Chapters…"): multi-file books allow title-only edits (times come from the files); single-file/embedded books allow full editing — titles, start times (m:ss / h:mm:ss parsing), add/remove, and "Load from File" to restore embedded markers. Save normalizes order + recomputes per-chapter durations from start times (keeps the player's per-chapter local-time + end detection correct), marks the book user-edited, and reloads the player if the book is loaded-but-idle.
+- Note: work landed on the canonical xcodeproj tree (`Lorcaster/`) + the shared Core package; the stale SPM harness (`App/Sources/Lorcaster/`) was not retrofitted (it had already diverged at Phase 1).
 
 ### Phase 3: Built-in Player (Full Current Parity) (3–4 weeks)
 - Native player using AVFoundation + AVKit (bottom bar + full expanded player view or separate window).
@@ -139,7 +152,22 @@ Because this will be a complete native rewrite (no web layer, no Node), we are d
 - Update mechanism (Sparkle recommended for direct downloads).
 - Help/documentation inside the app.
 
-### Phase 7: Future / Optional
+### Phase 7: Metadata & Chapter Write-Back (Embed Into Files) (2–3 weeks)
+Make the edits the user makes in the app (Phase 2 metadata editing, ASIN matching, and chapter editing) **portable** by writing them back into the actual audio files — parity with Audiobookshelf's "Embed Metadata" / chapter-embed feature. Today all edits live only in the app's own store (`CastItem` persisted to UserDefaults/DB) and the on-disk files are never modified; this phase adds an explicit, opt-in write-back.
+
+- **Sandbox / file access**: the app currently holds `com.apple.security.files.user-selected.read-only`. Embedding requires **read-write** access to library files — switch to `com.apple.security.files.user-selected.read-write` and re-create the library folder security-scoped bookmarks with write permission. Keep writes strictly within user-granted folders.
+- **Tooling**: bundle the static `ffmpeg`/`ffprobe` (already present at the repo root) inside the .app. AVFoundation/`AVAssetExportSession` can't write arbitrary chapter markers or the full range of tag formats, so ffmpeg is the reliable path:
+  - Tags: ID3v2 (mp3), iTunes/MP4 atoms (m4a/m4b) — title, subtitle, author/artist, narrator/composer, album/series, track/sequence, year, publisher, genre, description/comment, ASIN/ISBN.
+  - Chapters: generate an ffmetadata file (`[CHAPTER]` blocks with `START`/`END`/`title`) from `CastItem.chapters` and mux it in. Cover art via attached picture stream.
+  - Prefer stream copy (`-c copy`) to avoid re-encoding when only metadata/chapters change.
+- **Write strategy & safety** (modifying the user's own files — must be conservative):
+  - Write to a temp file, verify by re-probing, then atomically replace the original.
+  - Optional `.bak` backups + a clear confirmation dialog before any write; never destroy the original on failure.
+  - Dry-run/preview of what will be written.
+- **UI**: an "Embed into File" action in the Get Info and Chapter editors and the book context menu, plus a batch **"Embed All Edited"** (mirrors the Auto-Match-by-ASIN pattern: observable progress + summary, guarded while running). Only books with app-side edits (or a user selection) are written.
+- **Parity goal**: metadata + chapters + cover edited in Lorcaster can be embedded into the audio files so they're correct in any other player, matching the current app's embed behavior.
+
+### Phase 8: Future / Optional
 - Widgets, Shortcuts support, Focus modes integration.
 - Optional lightweight web interface (only if strong demand — try to avoid).
 - iOS companion (if you later decide to expand the consumption side).
@@ -204,7 +232,15 @@ Because this will be a complete native rewrite (no web layer, no Node), we are d
     - `PlayerController` now uses **real `AVPlayer` + `AVPlayerItem`** (not mock). `load(_:)` resolves via `CoreStore.shared.playableURL(for: item)` (the bookmark + relativePath bridge), creates player, installs periodic time observer (updates currentTime live), async loads more accurate asset duration, applies variable rate, seek with tolerance, natural end detection.
     - `play/pause/toggle/stop/seek/setRate` all drive the real AVPlayer (with fallback lightweight sim only for the rare unresolved-URL case so UI never completely dead).
     - Rate Stepper in PlayerTab now functional (binds through `setRate`).
-  - Cross-cutting: Menu bar, main window tabs, Settings (dock icon toggle that flips activation policy) all wired to the real Core/Player/Server controllers. Two source trees kept in sync (traditional `Lorcaster/` next to .xcodeproj + `App/Sources/Lorcaster/` for `swift run` SPM harness).
+    - **Chapter support complete for both types**:
+      - Multi-file books (per-chapter audio files with `relativePath`): scanner populates chapters with cumulative startTimes + relativePaths; `playChapter` switches files via new `AVPlayerItem`; local per-chapter time/duration; reliable skip + auto-advance at end of chapter file.
+      - Embedded chapters inside single .m4b files (no `relativePath`): `loadChapters` uses `AVAsset.loadChapterMetadataGroups`; explicit `currentChapter` + local-time translation in the time observer + time-based matching only when safe; `playChapter` does **not** replace the player item (prevents playback interruption); `updateCurrentChapter` trusts explicit choice for a short window after manual selection + uses file-absolute matchTime for embedded; enrichment task after initial load now preserves the correct starting chapter via closest `startTime` match.
+    - **PlayerTab now-playing artwork polished**:
+      - 3× larger (max 540 pt height, full available width).
+      - Uses `.scaledToFit()` + 16 pt padding inside a sized `RoundedRectangle` container (same reliable pattern as the library grid) so the artwork fits nicely with breathing room and rounded corners.
+      - Reliable loading via explicit `startAccessingSecurityScopedResource()` + `NSImage(contentsOf:)` in a `.task(id: item.id)` (more robust in the sandboxed app than `AsyncImage` for local cover files).
+      - The system Now Playing artwork path (`MPMediaItemArtwork` / `MPNowPlayingInfoCenter`) remains intentionally disabled for stability — local UI covers in Library grid and PlayerTab are solid.
+  - Cross-cutting: Menu bar, main window tabs, Settings (dock icon toggle that flips activation policy) all wired to the real Core/Player/Server controllers. Two source trees kept in sync (traditional `Lorcaster/` next to .xcodeproj + `App/Sources/Lorcaster/` for `swift run` SPM harness). Window minimum height raised to 700 (initial content height 720) so the large 540 pt artwork area in PlayerTab is visible by default without manual resizing.
 - Scaffold/Phase 0 details still apply (MenuBarExtraAccess explicitly in target's Frameworks/Libraries/Embedded Content, LSUIElement, AppDelegate accessory policy, `.menuBarExtraAccess`, cleaned project, etc.).
 - The SPM-based version (in `LorcasterMac/App/`) remains available for quick terminal testing (`swift run Lorcaster` from the App dir) and builds the same logic.
 - Original Node.js backend + web client (in the parent `Lorcaster/` directory) retained as the live reference for feature parity during the port.
@@ -216,7 +252,13 @@ Because this will be a complete native rewrite (no web layer, no Node), we are d
 2. If a folder added via the app doesn't play (rare), check Console for "Could not resolve playable URL", verify the folder is still at the same path, and try Rescan or re-adding. (Security scope + bookmarks survive app restarts.)
 3. Decide on the embedded server framework (Hummingbird recommended for lightness; Vapor as alternative) and media handling strategy (bundle the existing `ffmpeg`/`ffprobe` from repo root, or a static build, for full current transcoding parity in Phase 4) before heavy server work.
 4. Keep the Node + web client running in parallel (`npm run dev` + client) as the living spec for exact feature parity (scanning layout, metadata fields, player behaviors, API surface for the consumption apps).
-5. Next concrete pieces after validation: richer cover art (load actual images from coverRelativePath using the same bookmark root), chapter detection (from files or embedded), and/or start the server framework spike.
+5. Next concrete pieces (player side now quite solid):
+   - Chapters (both multi-file and embedded .m4b markers) are now working end-to-end with stable highlighting from initial playback and reliable Prev/Next + list navigation.
+   - PlayerTab artwork is 3× larger, nicely fitted (`.scaledToFit()` + breathing room), reliably loaded via explicit security-scoped `NSImage`, inside a sized rounded container.
+   - Window minimum height raised so the large artwork area is visible by default.
+   - System Now Playing artwork (`MPMediaItemArtwork`) remains intentionally disabled for stability.
+   - Remaining player polish ideas: auto-scroll chapter list to current chapter, persist last-played chapter/position per book, richer per-chapter metadata if the file provides it.
+   - Decide whether/when (if ever) to re-enable system Now Playing artwork, then start the server framework spike.
 
 This plan now fully incorporates:
 - macOS-only, self-contained packaged app (no Node/terminal for end users).

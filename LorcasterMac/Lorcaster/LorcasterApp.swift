@@ -28,7 +28,7 @@ struct LorcasterApp: App {
         .menuBarExtraStyle(.menu)
         
         Settings {
-            SettingsView()
+            SettingsView(coreStore: coreStore)
         }
     }
 }
