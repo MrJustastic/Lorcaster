@@ -245,6 +245,9 @@ public final class PlayerController {
                     if let match = self.chapters.last(where: { $0.startTime <= fileAbsolute }) ?? self.chapters.first {
                         self.currentChapter = match
                         self.currentTime = max(0, fileAbsolute - match.startTime)
+                        // Use the chapter's duration (chapter-local model) so time display + the
+                        // scrubber span the current chapter, consistent with playChapter().
+                        if let chDur = match.duration { self.duration = chDur }
                     } else {
                         self.updateCurrentChapter()
                     }
@@ -558,6 +561,18 @@ public final class PlayerController {
             target = current
         }
         playChapter(target)
+    }
+
+    // MARK: - Skip (Phase 3)
+
+    /// Skips forward within the current chapter (clamped by seek()).
+    public func skipForward(_ seconds: TimeInterval = 30) {
+        seek(to: currentTime + seconds)
+    }
+
+    /// Skips backward within the current chapter.
+    public func skipBackward(_ seconds: TimeInterval = 15) {
+        seek(to: max(0, currentTime - seconds))
     }
 
     // MARK: - Resume progress (Phase 3)

@@ -115,7 +115,7 @@ Because this will be a complete native rewrite (no web layer, no Node), we are d
   - Chapter navigation and display.
   - Playback speed control.
   - Sleep timer.
-  - Queue / playlist support.
+  - ~~Queue / playlist support.~~ *(Descoped: a basic play/next/enqueue queue exists; full queue editing is not needed without podcasts.)*
   - Progress tracking and syncing (local + report to server for remote clients).
   - Now Playing integration (macOS Control Center, media keys).
   - Background playback and interruptions.
@@ -128,6 +128,8 @@ Because this will be a complete native rewrite (no web layer, no Node), we are d
 - **Resume position**: per-book book-absolute position persisted in `CoreStore` (`playbackPosition(for:)`/`save`/`clear`, `@ObservationIgnored`, UserDefaults), cleared when a folder/library is removed. The player computes `currentBookPosition` (= `currentChapter.startTime + currentTime`, uniform for multi-file + embedded), saves it throttled (~5s) during playback and on pause/seek/chapter-switch/stop, and clears it within ~5s of the end (finished books restart). `load()` restores it: multi-file picks the chapter file containing the position + local seek; single-file/embedded seeks the file-absolute time; the embedded-enrichment step highlights the chapter at the resumed position.
 - **Auto-scroll chapter list**: the PlayerTab chapter list uses a `ScrollViewReader` and centers the current chapter as it advances (`onChange` of `currentChapter`).
 - **Sleep timer**: `PlayerController` supports a wall-clock duration (Task-based, `sleepTimerEndDate`/`sleepTimerRemaining`) or end-of-current-chapter (handled in the time observer); cancelled on stop. PlayerTab adds a Sleep menu (Off/5/15/30/45/60 min / End of Chapter) that shows the active state + remaining minutes.
+- **Scrubber + skip**: PlayerTab gained a chapter scrub `Slider` (tracks `currentTime`, seeks once on release via `onEditingChanged` so it doesn't spam seeks) with current/duration labels, and **Back 15 / Forward 30** buttons (`PlayerController.skipBackward/skipForward`). The embedded-chapter enrichment now sets `duration` to the matched chapter's duration so the time display + scrubber span the current chapter consistently (matching `playChapter`).
+- **Intentionally deferred**: System Now Playing artwork (`MPMediaItemArtwork`) stays disabled — enabling it previously broke playback for books with art (see the bisecting notes in `LorcasterPlayer.load`). Queue editing is descoped (no podcasts). This commit is a known-good save point before any Now Playing artwork experiments.
 
 ### Phase 4: Embedded Server & Remote Client Support (4–6 weeks)
 - Full HTTP server + the API surface needed by the separate consumption apps (match current API where practical for compatibility).

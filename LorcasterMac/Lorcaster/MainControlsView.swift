@@ -86,6 +86,8 @@ private struct PlayerTab: View {
 
     @State private var coverImage: NSImage?
     @State private var isLoadingCover = false
+    @State private var isScrubbing = false
+    @State private var scrubValue: Double = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -147,9 +149,34 @@ private struct PlayerTab: View {
                             .font(.caption)
                             .foregroundStyle(.tint)
                     }
-                    Text("\(formatDuration(player.currentTime)) / \(formatDuration(player.duration))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                }
+
+                // Scrubber for the current chapter (seeks once on release).
+                VStack(spacing: 2) {
+                    Slider(
+                        value: Binding(
+                            get: { isScrubbing ? scrubValue : player.currentTime },
+                            set: { scrubValue = $0 }
+                        ),
+                        in: 0...max(player.duration, 0.1),
+                        onEditingChanged: { editing in
+                            if editing {
+                                isScrubbing = true
+                                scrubValue = player.currentTime
+                            } else {
+                                isScrubbing = false
+                                player.seek(to: scrubValue)
+                            }
+                        }
+                    )
+                    HStack {
+                        Text(formatDuration(isScrubbing ? scrubValue : player.currentTime))
+                        Spacer()
+                        Text(formatDuration(player.duration))
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
                 }
 
             } else {
@@ -164,11 +191,23 @@ private struct PlayerTab: View {
                 }
                 .disabled(player.chapters.isEmpty)
 
+                Button(action: { player.skipBackward(15) }) {
+                    Image(systemName: "gobackward.15")
+                }
+                .disabled(player.currentItem == nil)
+                .help("Back 15 seconds")
+
                 Button(action: { player.toggle() }) {
                     Label(player.isPlaying ? "Pause" : "Play",
                           systemImage: player.isPlaying ? "pause.fill" : "play.fill")
                 }
                 .controlSize(.large)
+
+                Button(action: { player.skipForward(30) }) {
+                    Image(systemName: "goforward.30")
+                }
+                .disabled(player.currentItem == nil)
+                .help("Forward 30 seconds")
 
                 Button(action: { player.skipToNextChapter() }) {
                     Label("Next Chapter", systemImage: "forward.fill")
