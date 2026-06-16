@@ -34,3 +34,7 @@ LorcasterMac/**/*.xcodeproj/xcuserdata/
 LorcasterMac/**/.swiftpm/
 LorcasterMac/**/.DS_Store
 LorcasterMac/**/xcuserdata/
+
+# Native macOS app moved to its own repo (MrJustastic/Lorcaster-Server)
+Lorcaster Mac/
+LorcasterMac/
