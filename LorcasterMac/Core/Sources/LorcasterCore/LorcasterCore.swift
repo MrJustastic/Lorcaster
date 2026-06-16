@@ -593,6 +593,11 @@ public final class CoreStore {
     private var scopedResources: [URL] = []
     private var knownKeys: Set<String> = []
 
+    // Per-book resume positions (book-absolute seconds), keyed by item id. Not observed (saved
+    // frequently by the player; no UI binds to it directly).
+    @ObservationIgnored private var playbackPositions: [String: TimeInterval] = [:]
+    private let positionsKey = "LorcasterPlaybackPositions.v1"
+
     private init() {
         if UserDefaults.standard.object(forKey: Self.preferLocalArtworkKey) != nil {
             preferLocalArtwork = UserDefaults.standard.bool(forKey: Self.preferLocalArtworkKey)
@@ -705,8 +710,11 @@ public final class CoreStore {
         bookmarkDatas = keptBookmarks
 
         // Remove items belonging to this source + rebuild knownKeys for remaining
+        let removedIDs = items.filter { $0.source == name }.map { $0.id.uuidString }
         items.removeAll { $0.source == name }
         knownKeys = Set(items.map { keyFor($0) })
+        for id in removedIDs { playbackPositions.removeValue(forKey: id) }
+        if !removedIDs.isEmpty { persistPositions() }
 
         // Rebuild displayed root names
         libraryRootNames.removeAll { $0 == name }
@@ -723,6 +731,8 @@ public final class CoreStore {
         items.removeAll()
         knownKeys.removeAll()
         libraryRootNames.removeAll()
+        playbackPositions.removeAll()
+        persistPositions()
 
         for url in scopedResources {
             url.stopAccessingSecurityScopedResource()
@@ -799,6 +809,36 @@ public final class CoreStore {
         knownKeys = Set(items.map { keyFor($0) })
         persistItems()
         lastError = nil
+    }
+
+    // MARK: - Resume positions (Phase 3)
+
+    /// Saved book-absolute position (seconds) for a book, or nil if none / finished.
+    public func playbackPosition(for id: UUID) -> TimeInterval? {
+        playbackPositions[id.uuidString]
+    }
+
+    /// Stores the current book-absolute position for a book (called frequently by the player).
+    public func savePlaybackPosition(_ seconds: TimeInterval, for id: UUID) {
+        guard seconds.isFinite, seconds > 0 else {
+            clearPlaybackPosition(for: id)
+            return
+        }
+        playbackPositions[id.uuidString] = seconds
+        persistPositions()
+    }
+
+    /// Clears a saved position (e.g. when a book is finished or removed).
+    public func clearPlaybackPosition(for id: UUID) {
+        if playbackPositions.removeValue(forKey: id.uuidString) != nil {
+            persistPositions()
+        }
+    }
+
+    private func persistPositions() {
+        if let data = try? JSONEncoder().encode(playbackPositions) {
+            UserDefaults.standard.set(data, forKey: positionsKey)
+        }
     }
 
     // MARK: - Batch auto-match by ASIN (Phase 2)
@@ -881,6 +921,12 @@ public final class CoreStore {
         // Load persisted bookmarks
         if let storedBookmarks = UserDefaults.standard.array(forKey: bookmarksKey) as? [Data] {
             bookmarkDatas = storedBookmarks
+        }
+
+        // Load persisted resume positions
+        if let posData = UserDefaults.standard.data(forKey: positionsKey),
+           let decoded = try? JSONDecoder().decode([String: TimeInterval].self, from: posData) {
+            playbackPositions = decoded
         }
 
         // Load persisted items or keep demo samples

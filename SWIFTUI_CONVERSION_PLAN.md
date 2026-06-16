@@ -123,6 +123,12 @@ Because this will be a complete native rewrite (no web layer, no Node), we are d
 - Handle the same audio formats as the current app (leveraging bundled ffmpeg for tricky cases or transcoding).
 - **Parity goal**: Local Mac user can play exactly as they do in the current web client, with the same controls and behaviors.
 
+**Progress (Phase 3 polish):**
+- Default main-window width widened 640 → **960** (50% wider; height 720; min size unchanged at 480×700).
+- **Resume position**: per-book book-absolute position persisted in `CoreStore` (`playbackPosition(for:)`/`save`/`clear`, `@ObservationIgnored`, UserDefaults), cleared when a folder/library is removed. The player computes `currentBookPosition` (= `currentChapter.startTime + currentTime`, uniform for multi-file + embedded), saves it throttled (~5s) during playback and on pause/seek/chapter-switch/stop, and clears it within ~5s of the end (finished books restart). `load()` restores it: multi-file picks the chapter file containing the position + local seek; single-file/embedded seeks the file-absolute time; the embedded-enrichment step highlights the chapter at the resumed position.
+- **Auto-scroll chapter list**: the PlayerTab chapter list uses a `ScrollViewReader` and centers the current chapter as it advances (`onChange` of `currentChapter`).
+- **Sleep timer**: `PlayerController` supports a wall-clock duration (Task-based, `sleepTimerEndDate`/`sleepTimerRemaining`) or end-of-current-chapter (handled in the time observer); cancelled on stop. PlayerTab adds a Sleep menu (Off/5/15/30/45/60 min / End of Chapter) that shows the active state + remaining minutes.
+
 ### Phase 4: Embedded Server & Remote Client Support (4–6 weeks)
 - Full HTTP server + the API surface needed by the separate consumption apps (match current API where practical for compatibility).
 - Media streaming with range requests for seeking over the network.

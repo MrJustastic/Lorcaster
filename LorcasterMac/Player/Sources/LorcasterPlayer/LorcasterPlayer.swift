@@ -39,6 +39,14 @@ public final class PlayerController {
     // different chapter while the player seek is still propagating).
     private var lastChapterSwitchTime: Date = .distantPast
 
+    // Throttle for periodic resume-position saves during playback.
+    private var lastProgressSave: Date = .distantPast
+
+    // Sleep timer: a wall-clock duration (sleepTimerEndDate) or "until end of current chapter".
+    public private(set) var sleepTimerEndDate: Date?
+    public private(set) var sleepUntilChapterEnd: Bool = false
+    private var sleepTimerTask: Task<Void, Never>?
+
     public static let shared = PlayerController()
 
     private var avPlayer: AVPlayer?
@@ -78,20 +86,45 @@ public final class PlayerController {
             currentQueueIndex = 0
         }
 
-        // For books with chapters (especially multi-file books where each chapter is a separate audio file),
-        // use the first chapter's relativePath for the initial audio file.
-        // This consolidates "chapter files" into one book entry in the library.
+        // Resume support: restore the saved book-absolute position for this book (if any).
+        let resumeTarget = max(0, CoreStore.shared.playbackPosition(for: item.id) ?? 0)
+        let isMultiFile = item.chapters.count > 1 && item.chapters.contains { $0.relativePath != nil }
+
+        // Choose the initial audio file + how far to seek into it. fileSeekSeconds is interpreted
+        // within the chosen file: a per-chapter local offset for multi-file books, or the file-absolute
+        // time for single-file/embedded books.
         let initialAudioItem: CastItem
-        if let firstChapter = item.chapters.first, let chRel = firstChapter.relativePath {
+        var fileSeekSeconds: TimeInterval = 0
+
+        if isMultiFile {
+            // Pick the chapter file that contains the resume position (or the first chapter).
+            let startCh = (resumeTarget > 1 ? item.chapters.last(where: { $0.startTime <= resumeTarget }) : nil)
+                ?? item.chapters.first!
+            currentChapter = startCh
+            duration = startCh.duration ?? 0
+            fileSeekSeconds = max(0, resumeTarget - startCh.startTime)
+            currentTime = fileSeekSeconds
+            initialAudioItem = CastItem(
+                title: startCh.title,
+                duration: startCh.duration ?? 0,
+                source: item.source,
+                relativePath: startCh.relativePath ?? item.relativePath
+            )
+        } else if let firstChapter = item.chapters.first, let chRel = firstChapter.relativePath {
+            // Single file (e.g. .m4b): seek the file-absolute resume time directly.
+            currentChapter = firstChapter
+            fileSeekSeconds = resumeTarget
+            currentTime = resumeTarget
             initialAudioItem = CastItem(
                 title: firstChapter.title,
                 duration: firstChapter.duration ?? 0,
                 source: item.source,
                 relativePath: chRel
             )
-            currentChapter = firstChapter
         } else {
             initialAudioItem = item
+            fileSeekSeconds = resumeTarget
+            currentTime = resumeTarget
         }
 
         // Resolve real playable file URL via CoreStore's bookmark + relativePath logic.
@@ -115,6 +148,12 @@ public final class PlayerController {
         // load/play transitions. We can re-enable later if we add explicit
         // AirPlay UI/support.
         p.allowsExternalPlayback = false
+
+        // Resume: seek the freshly-created player to the saved position before playback starts.
+        if fileSeekSeconds > 1 {
+            p.seek(to: CMTime(seconds: fileSeekSeconds, preferredTimescale: 600),
+                   toleranceBefore: .zero, toleranceAfter: .zero)
+        }
 
         // Note on console noise during playback only:
         // When AVPlayer begins actual decoding/playback of a local file (resolved via
@@ -157,6 +196,21 @@ public final class PlayerController {
                 self.updateCurrentChapter()
                 self.updateNowPlayingElapsedOnly()
 
+                // Persist resume position periodically while playing.
+                if self.isPlaying, Date().timeIntervalSince(self.lastProgressSave) > 5 {
+                    self.lastProgressSave = Date()
+                    self.persistProgress()
+                }
+
+                // Sleep timer: pause at the end of the current chapter (currentTime is chapter-local
+                // for both multi-file and embedded books, so this works uniformly).
+                if self.sleepUntilChapterEnd, let chDur = self.currentChapter?.duration,
+                   chDur > 0, localSecs >= chDur - 0.3 {
+                    self.sleepUntilChapterEnd = false
+                    self.pause()
+                    return
+                }
+
                 // Natural end detection for the *current chapter* (local time vs chapter duration)
                 let dur = self.duration > 0 ? self.duration : (playerItem.duration.seconds > 0 ? playerItem.duration.seconds : 0)
                 // Suppress the auto-advance for a short window after the user manually selected
@@ -181,17 +235,16 @@ public final class PlayerController {
                 (self.chapters.count <= 1 || self.chapters.allSatisfy { $0.relativePath == nil })
             if shouldEnrichEmbedded {
                 let loadedChapters = await self.loadChapters(from: asset)
-                if self.currentItem?.id == item.id {
-                    // When the async enrichment task replaces the chapters array with the detailed
-                    // embedded markers, pick the one whose startTime is closest to where we were
-                    // (usually the first chapter on a fresh load). This makes the black "currently
-                    // playing" highlight appear right away and lets the Prev/Next buttons work
-                    // from the very beginning, without needing a prior tap in the list.
-                    let previous = self.currentChapter
+                if self.currentItem?.id == item.id, !loadedChapters.isEmpty {
+                    // When the async enrichment replaces the chapter list with the detailed embedded
+                    // markers, highlight the chapter that actually contains the current file-absolute
+                    // position. This makes the "now playing" highlight correct immediately — including
+                    // when resuming mid-book — and recomputes the chapter-local time.
+                    let fileAbsolute = self.currentBookPosition
                     self.chapters = loadedChapters
-                    if let prev = previous,
-                       let match = self.chapters.min(by: { abs($0.startTime - prev.startTime) < abs($1.startTime - prev.startTime) }) {
+                    if let match = self.chapters.last(where: { $0.startTime <= fileAbsolute }) ?? self.chapters.first {
                         self.currentChapter = match
+                        self.currentTime = max(0, fileAbsolute - match.startTime)
                     } else {
                         self.updateCurrentChapter()
                     }
@@ -472,6 +525,7 @@ public final class PlayerController {
 
         updateCurrentChapter()   // ensure the chapter list highlight follows immediately
         updateNowPlaying()
+        persistProgress()
         print("[LorcasterPlayer] Switched to chapter: \(chapter.title)")
     }
 
@@ -504,6 +558,66 @@ public final class PlayerController {
             target = current
         }
         playChapter(target)
+    }
+
+    // MARK: - Resume progress (Phase 3)
+
+    /// Book-absolute position (seconds): chapter start + chapter-local currentTime. Works for both
+    /// multi-file books (cumulative startTimes) and embedded .m4b books (file-absolute startTimes).
+    private var currentBookPosition: TimeInterval {
+        (currentChapter?.startTime ?? 0) + currentTime
+    }
+
+    /// Saves (or clears, when within ~5s of the end) the resume position for the current book.
+    private func persistProgress() {
+        guard let item = currentItem else { return }
+        let pos = currentBookPosition
+        let total = item.duration
+        if total > 0 && pos >= total - 5 {
+            CoreStore.shared.clearPlaybackPosition(for: item.id)
+        } else {
+            CoreStore.shared.savePlaybackPosition(pos, for: item.id)
+        }
+    }
+
+    // MARK: - Sleep timer (Phase 3)
+
+    public var isSleepTimerActive: Bool { sleepTimerEndDate != nil || sleepUntilChapterEnd }
+
+    /// Seconds remaining for a duration-based sleep timer (nil if none / end-of-chapter mode).
+    public var sleepTimerRemaining: TimeInterval? {
+        guard let end = sleepTimerEndDate else { return nil }
+        return max(0, end.timeIntervalSinceNow)
+    }
+
+    /// Pauses playback after `minutes` of wall-clock time.
+    public func startSleepTimer(minutes: Int) {
+        cancelSleepTimer()
+        let secs = TimeInterval(max(1, minutes) * 60)
+        sleepTimerEndDate = Date().addingTimeInterval(secs)
+        sleepTimerTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(secs))
+            if Task.isCancelled { return }
+            await MainActor.run {
+                guard let self else { return }
+                self.sleepTimerEndDate = nil
+                self.sleepTimerTask = nil
+                self.pause()
+            }
+        }
+    }
+
+    /// Pauses playback when the current chapter ends (handled in the time observer).
+    public func startSleepTimerEndOfChapter() {
+        cancelSleepTimer()
+        sleepUntilChapterEnd = true
+    }
+
+    public func cancelSleepTimer() {
+        sleepTimerTask?.cancel()
+        sleepTimerTask = nil
+        sleepTimerEndDate = nil
+        sleepUntilChapterEnd = false
     }
 
     // MARK: - Now Playing / Media integration (Control Center, media keys, etc.)
@@ -646,6 +760,7 @@ public final class PlayerController {
         isPlaying = false
         avPlayer?.pause()
         updateNowPlaying()
+        persistProgress()
         print("[LorcasterPlayer] Pause")
     }
 
@@ -654,6 +769,10 @@ public final class PlayerController {
     }
 
     public func stop() {
+        // Save where we are before tearing down (covers the Stop button, app quit, and load() switching books).
+        persistProgress()
+        cancelSleepTimer()
+
         isPlaying = false
         currentTime = 0
         chapters = []
@@ -696,6 +815,7 @@ public final class PlayerController {
         let cmTime = CMTime(seconds: playerSeekTime, preferredTimescale: 600)
         p.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
         updateNowPlaying()
+        persistProgress()
         print("[LorcasterPlayer] Seeked to \(Int(clamped))s (chapter local)")
     }
 

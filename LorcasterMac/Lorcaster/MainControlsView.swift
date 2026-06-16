@@ -180,6 +180,23 @@ private struct PlayerTab: View {
                 Stepper(value: Binding(get: { player.rate }, set: { player.setRate($0) }), in: 0.5...2.0, step: 0.25) {
                     Text("Rate \(player.rate, specifier: "%.2f")x")
                 }
+
+                Menu {
+                    if player.isSleepTimerActive {
+                        Button("Turn Off") { player.cancelSleepTimer() }
+                        Divider()
+                    }
+                    ForEach([5, 15, 30, 45, 60], id: \.self) { minutes in
+                        Button("\(minutes) minutes") { player.startSleepTimer(minutes: minutes) }
+                    }
+                    Button("End of Chapter") { player.startSleepTimerEndOfChapter() }
+                        .disabled(player.currentChapter?.duration == nil)
+                } label: {
+                    Label(sleepLabel, systemImage: player.isSleepTimerActive ? "moon.fill" : "moon")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("Sleep timer")
             }
 
             // Queue navigation
@@ -196,28 +213,35 @@ private struct PlayerTab: View {
             if !player.chapters.isEmpty {
                 Text("Chapters (\(player.chapters.count))")
                     .font(.headline)
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 4) {
-                        ForEach(player.chapters) { chapter in
-                            Button {
-                                player.playChapter(chapter)
-                            } label: {
-                                HStack {
-                                    Text(chapter.title)
-                                        .foregroundStyle(player.currentChapter?.id == chapter.id ? .primary : .secondary)
-                                    Spacer()
-                                    if let dur = chapter.duration {
-                                        Text(formatDuration(dur))
-                                            .font(.caption)
-                                            .foregroundStyle(.tertiary)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 4) {
+                            ForEach(player.chapters) { chapter in
+                                Button {
+                                    player.playChapter(chapter)
+                                } label: {
+                                    HStack {
+                                        Text(chapter.title)
+                                            .foregroundStyle(player.currentChapter?.id == chapter.id ? .primary : .secondary)
+                                        Spacer()
+                                        if let dur = chapter.duration {
+                                            Text(formatDuration(dur))
+                                                .font(.caption)
+                                                .foregroundStyle(.tertiary)
+                                        }
                                     }
                                 }
+                                .buttonStyle(.plain)
+                                .id(chapter.id)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
+                    .frame(maxHeight: 140)
+                    .onChange(of: player.currentChapter?.id) { _, newID in
+                        guard let newID else { return }
+                        withAnimation { proxy.scrollTo(newID, anchor: .center) }
+                    }
                 }
-                .frame(maxHeight: 140)
             } else {
                 Text("No chapters for current item")
                     .font(.caption)
@@ -262,6 +286,13 @@ private struct PlayerTab: View {
             }
         }
         .padding(.horizontal, 4)
+    }
+
+    /// Compact label for the sleep-timer menu button.
+    private var sleepLabel: String {
+        if player.sleepUntilChapterEnd { return "Chapter" }
+        if let remaining = player.sleepTimerRemaining { return "\(max(1, Int(remaining / 60)))m" }
+        return "Sleep"
     }
 
     private func formatDuration(_ seconds: TimeInterval) -> String {
