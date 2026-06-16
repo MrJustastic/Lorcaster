@@ -4,6 +4,7 @@ import LorcasterCore
 struct SettingsView: View {
     @AppStorage("showDockIcon") private var showDockIcon = false
     @AppStorage("smartRewindEnabled") private var smartRewindEnabled = true
+    @AppStorage("pauseOnOutputDisconnect") private var pauseOnOutputDisconnect = true
     @Bindable var coreStore: CoreStore
     @State private var showClearConfirm = false
 
@@ -56,6 +57,11 @@ struct SettingsView: View {
             Section("Playback") {
                 Toggle("Smart Rewind on Resume", isOn: $smartRewindEnabled)
                 Text("When resuming, skip back a few seconds based on how long playback was paused (up to 30s) to help you re-orient. Manually scrubbing or skipping cancels it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Toggle("Pause When Output Device Disconnects", isOn: $pauseOnOutputDisconnect)
+                Text("Pause playback when the audio device you're listening on is removed (e.g. headphones unplugged or Bluetooth disconnected), instead of switching to the speakers.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -120,7 +126,7 @@ struct SettingsView: View {
         } message: {
             Text("This removes all \(coreStore.items.count) book\(coreStore.items.count == 1 ? "" : "s") and every library folder from Lorcaster. Your audio files on disk are not deleted. This can’t be undone.")
         }
-        .frame(width: 460, height: 620)
+        .frame(width: 460, height: 680)
         .padding()
     }
 }

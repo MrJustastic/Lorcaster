@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import CoreAudio
 import Foundation
 import LorcasterCore
 import MediaPlayer
@@ -54,6 +55,8 @@ public final class PlayerController {
 
     // When playback was last paused/interrupted, for elapsed-based "smart rewind" on resume.
     private var pausedAt: Date?
+    // The default output device we believe we're playing on, to detect disconnects.
+    private var lastKnownOutputDevice: AudioDeviceID = 0
     // NotificationCenter tokens for the current AVPlayerItem (end/stall/failed); cleared on stop/load.
     private var itemObservers: [NSObjectProtocol] = []
 
@@ -72,10 +75,72 @@ public final class PlayerController {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.handleWillSleep() }
         }
+
+        // Pause when the audio output device we're using is removed (headphones unplugged, Bluetooth
+        // disconnect) — macOS doesn't auto-pause like iOS, so we'd otherwise blast the speakers.
+        lastKnownOutputDevice = Self.currentDefaultOutputDevice()
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectAddPropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject), &address, DispatchQueue.main
+        ) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.handleOutputDeviceChanged() }
+        }
     }
 
     private func handleWillSleep() {
         if isPlaying { pause() }   // pause() saves progress + records pausedAt (enables smart rewind on resume)
+    }
+
+    // MARK: - Output device changes (Phase 3)
+
+    private var pauseOnOutputDisconnect: Bool {
+        UserDefaults.standard.object(forKey: "pauseOnOutputDisconnect") == nil
+            ? true   // default on
+            : UserDefaults.standard.bool(forKey: "pauseOnOutputDisconnect")
+    }
+
+    /// Pause only when the device we were playing on actually disappeared (not when a new device is
+    /// added or the user manually switches output).
+    private func handleOutputDeviceChanged() {
+        let previous = lastKnownOutputDevice
+        lastKnownOutputDevice = Self.currentDefaultOutputDevice()
+        guard isPlaying, pauseOnOutputDisconnect else { return }
+        if previous != 0, !Self.allDeviceIDs().contains(previous) {
+            pause()
+            print("[LorcasterPlayer] Output device disconnected — paused")
+        }
+    }
+
+    private static func currentDefaultOutputDevice() -> AudioDeviceID {
+        var deviceID = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &deviceID)
+        return deviceID
+    }
+
+    private static func allDeviceIDs() -> [AudioDeviceID] {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var size = UInt32(0)
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size) == noErr else {
+            return []
+        }
+        let count = Int(size) / MemoryLayout<AudioDeviceID>.size
+        var ids = [AudioDeviceID](repeating: 0, count: count)
+        AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &ids)
+        return ids
     }
 
     public func load(_ item: CastItem) {
@@ -864,6 +929,7 @@ public final class PlayerController {
         }
         guard !isPlaying else { return }
         applySmartRewindIfNeeded()
+        lastKnownOutputDevice = Self.currentDefaultOutputDevice()
         isPlaying = true
         p.rate = rate
         p.play()
