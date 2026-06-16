@@ -517,30 +517,6 @@ private struct LibraryTab: View {
                     .pickerStyle(.menu)
                     .frame(width: 110)
                 }
-
-                // Action buttons on the right, like toolbar items
-                Button {
-                    addFolder()
-                } label: {
-                    Label("Add Folder", systemImage: "folder.badge.plus")
-                }
-                .help("Add a folder containing books or chapter files")
-
-                Button {
-                    Task { await coreStore.rescanAll() }
-                } label: {
-                    Label("Rescan", systemImage: "arrow.clockwise")
-                }
-                .disabled(coreStore.libraryRootNames.isEmpty)
-                .help("Re-scan all bookmarked folders")
-
-                Button {
-                    coreStore.clearLibrary()
-                } label: {
-                    Label("Clear", systemImage: "trash")
-                }
-                .disabled(coreStore.items.isEmpty)
-                .help("Clear library")
             }
             .padding(.horizontal)
             .padding(.vertical, 10)
@@ -597,14 +573,30 @@ private struct LibraryTab: View {
 
             // Main content — flat Books grid, or grouped by Author / Series.
             if filteredItems.isEmpty {
-                ContentUnavailableView(
-                    coreStore.items.isEmpty ? "No books in library" : "No matches",
-                    systemImage: coreStore.items.isEmpty ? "books.vertical" : "magnifyingglass",
-                    description: Text(coreStore.items.isEmpty
-                        ? "Add a folder with audiobook files. Multi-chapter books (separate audio files per chapter) are now shown as single entries with chapters."
-                        : "Try a different search or clear the filter.")
-                )
-                .frame(maxHeight: .infinity)
+                if coreStore.items.isEmpty {
+                    ContentUnavailableView {
+                        Label("No books in library", systemImage: "books.vertical")
+                    } description: {
+                        Text("Add a folder with audiobook files to get started. You can also add, rescan, and manage folders in Settings.")
+                    } actions: {
+                        Button {
+                            if let url = chooseLibraryFolder() {
+                                Task { await coreStore.addLibraryFolder(url) }
+                            }
+                        } label: {
+                            Label("Add Folder…", systemImage: "folder.badge.plus")
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    .frame(maxHeight: .infinity)
+                } else {
+                    ContentUnavailableView(
+                        "No matches",
+                        systemImage: "magnifyingglass",
+                        description: Text("Try a different search or clear the filter.")
+                    )
+                    .frame(maxHeight: .infinity)
+                }
             } else {
                 switch groupBy {
                 case .none:
@@ -744,22 +736,21 @@ private struct LibraryTab: View {
         }
     }
 
-    private func addFolder() {
-        let panel = NSOpenPanel()
-        panel.title = "Add Media Library Folder"
-        panel.message = "Choose a folder containing audiobooks. Folders with multiple chapter files will be shown as single books."
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.canCreateDirectories = false
-        panel.prompt = "Add to Library"
+}
 
-        if panel.runModal() == .OK, let url = panel.url {
-            Task { @MainActor in
-                await coreStore.addLibraryFolder(url)
-            }
-        }
-    }
+/// Presents the "Add Library Folder" open panel and returns the chosen folder URL (or nil if cancelled).
+/// Shared by the Library empty state and the Settings library controls.
+@MainActor
+func chooseLibraryFolder() -> URL? {
+    let panel = NSOpenPanel()
+    panel.title = "Add Media Library Folder"
+    panel.message = "Choose a folder containing audiobooks. Folders with multiple chapter files will be shown as single books."
+    panel.canChooseFiles = false
+    panel.canChooseDirectories = true
+    panel.allowsMultipleSelection = false
+    panel.canCreateDirectories = false
+    panel.prompt = "Add to Library"
+    return panel.runModal() == .OK ? panel.url : nil
 }
 
 // MARK: - Group browsing (Authors / Series cards + drill-in)

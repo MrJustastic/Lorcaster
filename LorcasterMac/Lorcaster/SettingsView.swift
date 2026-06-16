@@ -4,6 +4,7 @@ import LorcasterCore
 struct SettingsView: View {
     @AppStorage("showDockIcon") private var showDockIcon = false
     @Bindable var coreStore: CoreStore
+    @State private var showClearConfirm = false
 
     var body: some View {
         Form {
@@ -12,6 +13,43 @@ struct SettingsView: View {
                     .onChange(of: showDockIcon) { _, newValue in
                         NSApp.setActivationPolicy(newValue ? .regular : .accessory)
                     }
+            }
+
+            Section("Library") {
+                HStack {
+                    Button {
+                        if let url = chooseLibraryFolder() {
+                            Task { await coreStore.addLibraryFolder(url) }
+                        }
+                    } label: {
+                        Label("Add Folder…", systemImage: "folder.badge.plus")
+                    }
+                    .disabled(coreStore.isScanning)
+
+                    Button {
+                        Task { await coreStore.rescanAll() }
+                    } label: {
+                        Label("Rescan", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(coreStore.libraryRootNames.isEmpty || coreStore.isScanning)
+
+                    if coreStore.isScanning {
+                        ProgressView().controlSize(.small)
+                    }
+
+                    Spacer()
+
+                    Button(role: .destructive) {
+                        showClearConfirm = true
+                    } label: {
+                        Label("Clear Library…", systemImage: "trash")
+                    }
+                    .disabled(coreStore.items.isEmpty || coreStore.isScanning)
+                }
+
+                Text("\(coreStore.libraryCount) folder\(coreStore.libraryCount == 1 ? "" : "s") • \(coreStore.items.count) book\(coreStore.items.count == 1 ? "" : "s"). Remove individual folders from the chips in the Library tab.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Artwork") {
@@ -66,7 +104,15 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .frame(width: 440, height: 440)
+        .alert("Clear entire library?", isPresented: $showClearConfirm) {
+            Button("Clear Library", role: .destructive) {
+                coreStore.clearLibrary()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This removes all \(coreStore.items.count) book\(coreStore.items.count == 1 ? "" : "s") and every library folder from Lorcaster. Your audio files on disk are not deleted. This can’t be undone.")
+        }
+        .frame(width: 460, height: 540)
         .padding()
     }
 }
