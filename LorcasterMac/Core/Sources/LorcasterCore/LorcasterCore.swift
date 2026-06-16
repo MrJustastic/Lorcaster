@@ -583,6 +583,21 @@ public final class CoreStore {
         return preferLocalArtwork ? (local ?? remote) : (remote ?? local)
     }
 
+    /// Resolves an on-disk file URL for a given library source + relative path (starting security
+    /// scope as needed). Used by the embedded server to stream arbitrary chapter files.
+    public func fileURL(source: String, relativePath: String) -> URL? {
+        guard let root = resolvedRoot(forSource: source.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            return nil
+        }
+        let rel = relativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
+        guard !rel.isEmpty else { return root }
+        var full = root
+        for component in rel.split(separator: "/") {
+            full = full.appendingPathComponent(String(component))
+        }
+        return full
+    }
+
     public static let shared = CoreStore()
 
     // Persistence keys (v2 for enhanced CastItem with author/relative/cover fields + Library model prep)

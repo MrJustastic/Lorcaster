@@ -348,34 +348,82 @@ private struct PlayerTab: View {
 }
 
 private struct ServerTab: View {
-    let server: ServerController
+    @Bindable var server: ServerController
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Casting Server")
-                .font(.title2)
+            Text("Server")
+                .font(.title2.weight(.semibold))
 
-            HStack {
-                Text("Status:")
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(server.isRunning ? Color.green : Color.secondary)
+                    .frame(width: 10, height: 10)
                 Text(server.status)
-                    .foregroundStyle(server.isRunning ? .green : .red)
-                    .bold()
+                    .foregroundStyle(server.isRunning ? .green : .secondary)
+                Spacer()
+                Button(server.isRunning ? "Stop" : "Start") {
+                    Task { await server.toggle() }
+                }
+                .buttonStyle(.borderedProminent)
+            }
+
+            if let err = server.lastError, !server.isRunning {
+                Text(err)
+                    .font(.caption)
+                    .foregroundStyle(.red)
             }
 
             HStack {
-                Text("Clients:")
-                Text("\(server.connectedClients)")
+                Text("Port")
+                TextField("Port", value: $server.port, format: .number.grouping(.never))
+                    .frame(width: 80)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(server.isRunning)
+                if server.isRunning {
+                    Text("Stop the server to change the port.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
-            Button(server.isRunning ? "Stop Server" : "Start Server") {
-                Task { await server.toggle() }
-            }
-            .buttonStyle(.borderedProminent)
+            if server.isRunning {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Other devices on your network can connect to:")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(server.connectURL)
+                        .font(.system(.body, design: .monospaced))
+                        .textSelection(.enabled)
+                }
 
-            Text("This is a placeholder. Real implementation would expose endpoints for casting audio/video to clients or network receivers.")
+                GroupBox("Endpoints") {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach([
+                            "GET /ping",
+                            "GET /api/libraries",
+                            "GET /api/items",
+                            "GET /api/items/{id}",
+                            "GET /api/items/{id}/file",
+                            "GET /api/items/{id}/chapters/{n}/file",
+                            "GET /api/items/{id}/cover"
+                        ], id: \.self) { line in
+                            Text(line)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+
+            Text("The embedded server lets other Lorcaster devices on your network browse and stream your library. It’s advertised via Bonjour as “_lorcaster._tcp”. No authentication yet — keep it to trusted networks.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            Spacer()
         }
+        .padding()
     }
 }
 

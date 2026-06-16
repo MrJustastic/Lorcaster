@@ -118,7 +118,7 @@ Because this will be a complete native rewrite (no web layer, no Node), we are d
   - ~~Queue / playlist support.~~ *(Descoped: a basic play/next/enqueue queue exists; full queue editing is not needed without podcasts.)*
   - Progress tracking and syncing (local + report to server for remote clients).
   - Now Playing integration (macOS Control Center, media keys).
-  - Background playback and interruptions. *(macOS: background playback already works via the menu-bar agent. Added sleep/wake + stall/end handling; iOS-style `AVAudioSession` interruptions don't apply. Output-device-change pause is a planned follow-up.)*
+  - Background playback and interruptions. *(macOS: background playback already works via the menu-bar agent. Added sleep/wake + stall/end handling + output-device-disconnect pause; iOS-style `AVAudioSession` interruptions don't apply.)*
 - UI: Chapter list, waveform if available, speed/sleep controls, queue editor.
 - Handle the same audio formats as the current app (leveraging bundled ffmpeg for tricky cases or transcoding).
 - **Parity goal**: Local Mac user can play exactly as they do in the current web client, with the same controls and behaviors.
@@ -129,11 +129,23 @@ Because this will be a complete native rewrite (no web layer, no Node), we are d
 - **Auto-scroll chapter list**: the PlayerTab chapter list uses a `ScrollViewReader` and centers the current chapter as it advances (`onChange` of `currentChapter`).
 - **Sleep timer**: `PlayerController` supports a wall-clock duration (Task-based, `sleepTimerEndDate`/`sleepTimerRemaining`) or end-of-current-chapter (handled in the time observer); cancelled on stop. PlayerTab adds a Sleep menu (Off/5/15/30/45/60 min / End of Chapter) that shows the active state + remaining minutes.
 - **Scrubber + skip**: PlayerTab gained a chapter scrub `Slider` (tracks `currentTime`, seeks once on release via `onEditingChanged` so it doesn't spam seeks) with current/duration labels, and **Back 15 / Forward 30** buttons (`PlayerController.skipBackward/skipForward`). The embedded-chapter enrichment now sets `duration` to the matched chapter's duration so the time display + scrubber span the current chapter consistently (matching `playChapter`).
-- **Background & interruptions (macOS-appropriate)**: background playback already works (singleton player + LSUIElement agent — closing the window doesn't stop audio). Added: pause+save on `NSWorkspace.willSleep` (no auto-resume on wake); authoritative `AVPlayerItemDidPlayToEndTime` end-of-file handling (deduped against the time-observer threshold via `lastChapterSwitchTime`) plus stall-recovery and failure logging (per-item observer tokens cleaned up on stop/load). iOS-style `AVAudioSession` interruptions/background entitlements are N/A on macOS. Output-device-change pause (e.g. headphones unplugged) is a planned follow-up.
+- **Background & interruptions (macOS-appropriate)**: background playback already works (singleton player + LSUIElement agent — closing the window doesn't stop audio). Added: pause+save on `NSWorkspace.willSleep` (no auto-resume on wake); authoritative `AVPlayerItemDidPlayToEndTime` end-of-file handling (deduped against the time-observer threshold via `lastChapterSwitchTime`) plus stall-recovery and failure logging (per-item observer tokens cleaned up on stop/load). iOS-style `AVAudioSession` interruptions/background entitlements are N/A on macOS. **Output-device-disconnect pause**: a CoreAudio listener on the default output device pauses playback only when the device we were *using* is removed (headphones unplugged / Bluetooth disconnect) — not when a device is added or the user manually switches output (existence-checks the prior device against the device list). Settings → Playback toggle `pauseOnOutputDisconnect` (default on).
 - **Smart rewind on resume**: on play after a pause/sleep, rewind a stepped amount by elapsed-paused time (0 / 3 / 10 / 15 / 20 / 30s caps at <10s / <1m / <5m / <30m / <6h / ≥6h), clamped to the chapter start; cancelled if the user manually scrubs/skips (clears `pausedAt`). Settings → Playback toggle `smartRewindEnabled` (default on). Not an Audiobookshelf parity feature (it has only a fixed jump-back) but standard in audiobook players (Audible/BookPlayer).
 - **Intentionally deferred**: System Now Playing artwork (`MPMediaItemArtwork`) stays disabled — enabling it previously broke playback for books with art (see the bisecting notes in `LorcasterPlayer.load`). Queue editing is descoped (no podcasts).
 
-### Phase 4: Embedded Server & Remote Client Support (4–6 weeks)
+### Phase 4: Embedded Server & Remote Client Support (4–6 weeks) — STARTED
+
+**Decisions:** custom minimal JSON API now (designed so an Audiobookshelf-compatibility layer can be added later); **Hummingbird 2** as the server framework (added to `LorcasterServer`); LAN, no-auth MVP first.
+
+**Progress (read-only stream MVP — verified live against the real 143-item library):**
+- `LorcasterHTTPServer` (Hummingbird 2) runs on a detached task supervised by `ServerController` (cancellation → graceful shutdown). Added `com.apple.security.network.server` entitlement (listening socket) and `NSBonjourServices = [_lorcaster._tcp]`.
+- Endpoints: `GET /ping`; `GET /api/libraries`; `GET /api/items` (optional `?source=`); `GET /api/items/{id}`; `GET /api/items/{id}/file`; `GET /api/items/{id}/chapters/{n}/file`; `GET /api/items/{id}/cover`. Custom `LibraryDTO`/`BookDTO`/`BookDetailDTO`/`ChapterDTO` mapped from `CastItem`; handlers read a `CoreStore` snapshot via a MainActor hop.
+- **Audio streaming with HTTP range** (`206 Partial Content`, `Content-Range`, `Accept-Ranges`), chunked off-main (64KB) so large files are never loaded into memory; resolves security-scoped file URLs via `CoreStore.playableURL`/new `fileURL(source:relativePath:)`. `/file` streams the first chapter's actual audio (works for single-file, file-in-folder, and multi-file books). Verified: byte-range, suffix range, mid-file range, full-file, and 416.
+- **Bonjour**: advertised as `_lorcaster._tcp` via `NetService` (verified discoverable). Configurable **port** persisted in `ServerController` (UserDefaults), editable in the Server tab when stopped.
+- **Server tab** rebuilt: status indicator, start/stop, port field, the LAN connect URL (`http://<host>.local:<port>`), and an endpoint list.
+- Next: auth, remote progress reporting → CoreStore, WebSockets for realtime, then an optional ABS-compatibility layer.
+
+### Phase 4 (original outline): Embedded Server & Remote Client Support
 - Full HTTP server + the API surface needed by the separate consumption apps (match current API where practical for compatibility).
 - Media streaming with range requests for seeking over the network.
 - Real-time updates via WebSockets for connected players (new items, scan progress, etc.).
