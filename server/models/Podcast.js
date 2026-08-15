@@ -432,17 +432,14 @@ class Podcast extends Model {
     if (!libraryItemId) {
       throw new Error(`[Podcast] Cannot convert to old JSON because libraryItemId is not provided`)
     }
-    if (!this.podcastEpisodes) {
-      throw new Error(`[Podcast] Cannot convert to old JSON because episodes are not provided`)
-    }
-
     return {
       id: this.id,
       libraryItemId: libraryItemId,
       metadata: this.oldMetadataToJSON(),
       coverPath: this.coverPath,
       tags: [...(this.tags || [])],
-      episodes: this.podcastEpisodes.map((episode) => episode.toOldJSON(libraryItemId)),
+      episodes: (this.podcastEpisodes || []).map((episode) => episode.toOldJSON(libraryItemId)),
+      numEpisodes: this.numEpisodes || this.podcastEpisodes?.length || 0,
       autoDownloadEpisodes: this.autoDownloadEpisodes,
       autoDownloadSchedule: this.autoDownloadSchedule,
       lastEpisodeCheck: this.lastEpisodeCheck?.valueOf() || null,
@@ -458,7 +455,7 @@ class Podcast extends Model {
       metadata: this.oldMetadataToJSONExpanded(),
       coverPath: this.coverPath,
       tags: [...(this.tags || [])],
-      numEpisodes: this.podcastEpisodes?.length || 0,
+      numEpisodes: this.numEpisodes || this.podcastEpisodes?.length || 0,
       autoDownloadEpisodes: this.autoDownloadEpisodes,
       autoDownloadSchedule: this.autoDownloadSchedule,
       lastEpisodeCheck: this.lastEpisodeCheck?.valueOf() || null,
@@ -472,17 +469,14 @@ class Podcast extends Model {
     if (!libraryItemId) {
       throw new Error(`[Podcast] Cannot convert to old JSON because libraryItemId is not provided`)
     }
-    if (!this.podcastEpisodes) {
-      throw new Error(`[Podcast] Cannot convert to old JSON because episodes are not provided`)
-    }
-
     return {
       id: this.id,
       libraryItemId: libraryItemId,
       metadata: this.oldMetadataToJSONExpanded(),
       coverPath: this.coverPath,
       tags: [...(this.tags || [])],
-      episodes: this.podcastEpisodes.map((e) => e.toOldJSONExpanded(libraryItemId)),
+      episodes: (this.podcastEpisodes || []).map((e) => e.toOldJSONExpanded(libraryItemId)),
+      numEpisodes: this.numEpisodes || this.podcastEpisodes?.length || 0,
       autoDownloadEpisodes: this.autoDownloadEpisodes,
       autoDownloadSchedule: this.autoDownloadSchedule,
       lastEpisodeCheck: this.lastEpisodeCheck?.valueOf() || null,

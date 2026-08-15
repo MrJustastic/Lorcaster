@@ -188,8 +188,9 @@ class LibraryItem extends Model {
    * @param {string} libraryItemId
    * @returns {Promise<LibraryItemExpanded>}
    */
-  static async getExpandedById(libraryItemId) {
+  static async getExpandedById(libraryItemId, options = {}) {
     if (!libraryItemId) return null
+    const includeEpisodes = options.includeEpisodes !== false
 
     const libraryItem = await this.findByPk(libraryItemId)
     if (!libraryItem) {
@@ -198,13 +199,13 @@ class LibraryItem extends Model {
     }
 
     if (libraryItem.mediaType === 'podcast') {
-      libraryItem.media = await libraryItem.getMedia({
-        include: [
-          {
-            model: this.sequelize.models.podcastEpisode
-          }
-        ]
-      })
+      const include = []
+      if (includeEpisodes) {
+        include.push({
+          model: this.sequelize.models.podcastEpisode
+        })
+      }
+      libraryItem.media = await libraryItem.getMedia({ include })
     } else {
       libraryItem.media = await libraryItem.getMedia({
         include: [
@@ -1027,7 +1028,7 @@ class LibraryItem extends Model {
       isInvalid: !!this.isInvalid,
       mediaType: this.mediaType,
       media: this.media.toOldJSONMinified(),
-      numFiles: this.libraryFiles.length,
+      numFiles: Array.isArray(this.libraryFiles) ? this.libraryFiles.length : Number(this.getDataValue('fileCount') || 0),
       size: this.size
     }
   }

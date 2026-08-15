@@ -24,6 +24,7 @@ const libraryFilters = require('../utils/queries/libraryFilters')
 const libraryItemsPodcastFilters = require('../utils/queries/libraryItemsPodcastFilters')
 const authorFilters = require('../utils/queries/authorFilters')
 const zipHelpers = require('../utils/zipHelpers')
+const { parseListPagination } = require('../utils/index')
 
 /**
  * @typedef RequestUserObject
@@ -607,11 +608,12 @@ class LibraryController {
       .map((v) => v.trim().toLowerCase())
       .filter((v) => !!v)
 
+    const { limit, page, offset } = parseListPagination(req.query)
     const payload = {
       results: [],
       total: undefined,
-      limit: req.query.limit || 0,
-      page: req.query.page || 0,
+      limit,
+      page,
       sortBy: req.query.sort,
       sortDesc: req.query.desc === '1',
       filterBy: req.query.filter,
@@ -621,7 +623,7 @@ class LibraryController {
       include: include.join(',')
     }
 
-    payload.offset = payload.page * payload.limit
+    payload.offset = offset
 
     // TODO: Temporary way of handling collapse sub-series. Either remove feature or handle through sql queries
     const filterByGroup = payload.filterBy?.split('.').shift()
@@ -745,11 +747,12 @@ class LibraryController {
       .map((v) => v.trim().toLowerCase())
       .filter((v) => !!v)
 
+    const { limit, page, offset } = parseListPagination(req.query)
     const payload = {
       results: [],
       total: 0,
-      limit: req.query.limit || 0,
-      page: req.query.page || 0,
+      limit,
+      page,
       sortBy: req.query.sort,
       sortDesc: req.query.desc === '1',
       filterBy: req.query.filter,
@@ -757,7 +760,6 @@ class LibraryController {
       include: include.join(',')
     }
 
-    const offset = payload.page * payload.limit
     const { series, count } = await seriesFilters.getFilteredSeries(req.library, req.user, payload.filterBy, payload.sortBy, payload.sortDesc, include, payload.limit, offset)
 
     payload.total = count
@@ -817,11 +819,12 @@ class LibraryController {
       .map((v) => v.trim().toLowerCase())
       .filter((v) => !!v)
 
+    const { limit, page } = parseListPagination(req.query)
     const payload = {
       results: [],
       total: 0,
-      limit: req.query.limit || 0,
-      page: req.query.page || 0,
+      limit,
+      page,
       sortBy: req.query.sort,
       sortDesc: req.query.desc === '1',
       filterBy: req.query.filter,
@@ -853,11 +856,12 @@ class LibraryController {
   async getUserPlaylistsForLibrary(req, res) {
     let playlistsForUser = await Database.playlistModel.getOldPlaylistsForUserAndLibrary(req.user.id, req.library.id)
 
+    const { limit, page } = parseListPagination(req.query)
     const payload = {
       results: [],
       total: playlistsForUser.length,
-      limit: req.query.limit || 0,
-      page: req.query.page || 0
+      limit,
+      page
     }
 
     if (payload.limit) {
@@ -1285,13 +1289,13 @@ class LibraryController {
       return res.sendStatus(404)
     }
 
+    const { limit, page, offset } = parseListPagination(req.query)
     const payload = {
       episodes: [],
-      limit: req.query.limit || 0,
-      page: req.query.page || 0
+      limit,
+      page
     }
 
-    const offset = payload.page * payload.limit
     payload.episodes = await libraryItemsPodcastFilters.getRecentEpisodes(req.user, req.library, payload.limit, offset)
     res.json(payload)
   }

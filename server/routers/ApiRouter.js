@@ -517,60 +517,98 @@ class ApiRouter {
     }
   }
 
-  async getUserListeningSessionsHelper(userId) {
+  async getUserListeningSessionsHelper(userId, { limit, offset } = {}) {
+    if (limit) {
+      return Database.playbackSessionModel.getOldPlaybackSessionsPage({ userId }, { limit, offset })
+    }
     const userSessions = await Database.getPlaybackSessions({ userId })
     return userSessions.sort((a, b) => b.updatedAt - a.updatedAt)
   }
 
-  async getUserItemListeningSessionsHelper(userId, mediaItemId) {
+  async getUserItemListeningSessionsHelper(userId, mediaItemId, { limit, offset } = {}) {
+    if (limit) {
+      return Database.playbackSessionModel.getOldPlaybackSessionsPage({ userId, mediaItemId }, { limit, offset })
+    }
     const userSessions = await Database.getPlaybackSessions({ userId, mediaItemId })
     return userSessions.sort((a, b) => b.updatedAt - a.updatedAt)
   }
 
   async getUserListeningStatsHelpers(userId) {
     const today = date.format(new Date(), 'YYYY-MM-DD')
+    const { fn, col, literal } = require('sequelize')
 
-    const listeningSessions = await this.getUserListeningSessionsHelper(userId)
-    const listeningStats = {
-      totalTime: 0,
-      items: {},
-      days: {},
-      dayOfWeek: {},
-      today: 0,
-      recentSessions: listeningSessions.slice(0, 10)
-    }
-    listeningSessions.forEach((s) => {
-      let sessionTimeListening = s.timeListening
-      if (typeof sessionTimeListening == 'string') {
-        sessionTimeListening = Number(sessionTimeListening)
-      }
-
-      if (s.dayOfWeek) {
-        if (!listeningStats.dayOfWeek[s.dayOfWeek]) listeningStats.dayOfWeek[s.dayOfWeek] = 0
-        listeningStats.dayOfWeek[s.dayOfWeek] += sessionTimeListening
-      }
-      if (s.date && sessionTimeListening > 0) {
-        if (!listeningStats.days[s.date]) listeningStats.days[s.date] = 0
-        listeningStats.days[s.date] += sessionTimeListening
-
-        if (s.date === today) {
-          listeningStats.today += sessionTimeListening
-        }
-      }
-      if (!listeningStats.items[s.libraryItemId]) {
-        listeningStats.items[s.libraryItemId] = {
-          id: s.libraryItemId,
-          timeListening: sessionTimeListening,
-          mediaMetadata: s.mediaMetadata,
-          lastUpdate: s.lastUpdate
-        }
-      } else {
-        listeningStats.items[s.libraryItemId].timeListening += sessionTimeListening
-      }
-
-      listeningStats.totalTime += sessionTimeListening
+    const [totals] = await Database.playbackSessionModel.findAll({
+      where: { userId },
+      attributes: [
+        [fn('SUM', col('timeListening')), 'totalTime'],
+        [fn('SUM', literal(`CASE WHEN date = ${Database.sequelize.escape(today)} THEN timeListening ELSE 0 END`)), 'today']
+      ],
+      raw: true
     })
-    return listeningStats
+
+    const dayRows = await Database.playbackSessionModel.findAll({
+      where: { userId },
+      attributes: ['date', [fn('SUM', col('timeListening')), 'timeListening']],
+      group: ['date'],
+      raw: true
+    })
+
+    const dowRows = await Database.playbackSessionModel.findAll({
+      where: { userId },
+      attributes: ['dayOfWeek', [fn('SUM', col('timeListening')), 'timeListening']],
+      group: ['dayOfWeek'],
+      raw: true
+    })
+
+    const itemRows = await Database.playbackSessionModel.findAll({
+      where: { userId },
+      attributes: [
+        [literal("json_extract(extraData, '$.libraryItemId')"), 'libraryItemId'],
+        [fn('SUM', col('timeListening')), 'timeListening'],
+        [fn('MAX', col('updatedAt')), 'lastUpdate'],
+        [fn('MAX', col('mediaMetadata')), 'mediaMetadata']
+      ],
+      group: [literal("json_extract(extraData, '$.libraryItemId')")],
+      raw: true
+    })
+
+    const { sessions: recentSessions } = await Database.playbackSessionModel.getOldPlaybackSessionsPage({ userId }, { limit: 10, offset: 0 })
+
+    const days = {}
+    for (const row of dayRows) {
+      if (row.date && Number(row.timeListening) > 0) days[row.date] = Number(row.timeListening)
+    }
+    const dayOfWeek = {}
+    for (const row of dowRows) {
+      if (row.dayOfWeek) dayOfWeek[row.dayOfWeek] = Number(row.timeListening) || 0
+    }
+    const items = {}
+    for (const row of itemRows) {
+      if (!row.libraryItemId) continue
+      let mediaMetadata = row.mediaMetadata
+      if (typeof mediaMetadata === 'string') {
+        try {
+          mediaMetadata = JSON.parse(mediaMetadata)
+        } catch {
+          mediaMetadata = null
+        }
+      }
+      items[row.libraryItemId] = {
+        id: row.libraryItemId,
+        timeListening: Number(row.timeListening) || 0,
+        mediaMetadata,
+        lastUpdate: row.lastUpdate ? new Date(row.lastUpdate).valueOf() : 0
+      }
+    }
+
+    return {
+      totalTime: Number(totals?.totalTime) || 0,
+      items,
+      days,
+      dayOfWeek,
+      today: Number(totals?.today) || 0,
+      recentSessions
+    }
   }
 }
 module.exports = ApiRouter

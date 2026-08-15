@@ -258,7 +258,7 @@ class Book extends Model {
   }
 
   get includedAudioFiles() {
-    return this.audioFiles.filter((af) => !af.exclude)
+    return (this.audioFiles || []).filter((af) => !af.exclude)
   }
 
   get hasMediaFiles() {
@@ -329,7 +329,9 @@ class Book extends Model {
    */
   get size() {
     let total = 0
-    this.audioFiles.forEach((af) => (total += af.metadata.size))
+    if (Array.isArray(this.audioFiles)) {
+      this.audioFiles.forEach((af) => (total += af.metadata.size))
+    }
     if (this.ebookFile) {
       total += this.ebookFile.metadata.size
     }
@@ -655,17 +657,20 @@ class Book extends Model {
       throw new Error(`[Book] Cannot convert to old JSON because series are not loaded`)
     }
 
+    const audioFileCount = this.getDataValue('audioFileCount')
+    const chapterCount = this.getDataValue('chapterCount')
+    const ebookFormat = this.getDataValue('ebookFormat') ?? this.ebookFile?.ebookFormat
     return {
       id: this.id,
       metadata: this.oldMetadataToJSONMinified(),
       coverPath: this.coverPath,
       tags: [...(this.tags || [])],
-      numTracks: this.includedAudioFiles.length,
-      numAudioFiles: this.audioFiles?.length || 0,
-      numChapters: this.chapters?.length || 0,
+      numTracks: audioFileCount != null ? Number(audioFileCount) : this.includedAudioFiles.length,
+      numAudioFiles: audioFileCount != null ? Number(audioFileCount) : this.audioFiles?.length || 0,
+      numChapters: chapterCount != null ? Number(chapterCount) : this.chapters?.length || 0,
       duration: this.duration,
       size: this.size,
-      ebookFormat: this.ebookFile?.ebookFormat
+      ebookFormat
     }
   }
 

@@ -102,9 +102,10 @@ class SocketAuthority {
    * @param {import('./models/LibraryItem')} libraryItem
    */
   libraryItemEmitter(evt, libraryItem) {
+    const payload = libraryItem.toOldJSONExpanded()
     for (const socketId in this.clients) {
       if (this.clients[socketId].user?.checkCanAccessLibraryItem(libraryItem)) {
-        this.clients[socketId].socket.emit(evt, libraryItem.toOldJSONExpanded())
+        this.clients[socketId].socket.emit(evt, payload)
       }
     }
   }
@@ -117,14 +118,20 @@ class SocketAuthority {
    * @param {import('./models/LibraryItem')[]} libraryItems
    */
   libraryItemsEmitter(evt, libraryItems) {
+    const payloadsById = new Map()
+    const payloadFor = (libraryItem) => {
+      let payload = payloadsById.get(libraryItem.id)
+      if (!payload) {
+        payload = libraryItem.toOldJSONExpanded()
+        payloadsById.set(libraryItem.id, payload)
+      }
+      return payload
+    }
     for (const socketId in this.clients) {
       if (this.clients[socketId].user) {
         const libraryItemsAccessibleToUser = libraryItems.filter((li) => this.clients[socketId].user.checkCanAccessLibraryItem(li))
         if (libraryItemsAccessibleToUser.length) {
-          this.clients[socketId].socket.emit(
-            evt,
-            libraryItemsAccessibleToUser.map((li) => li.toOldJSONExpanded())
-          )
+          this.clients[socketId].socket.emit(evt, libraryItemsAccessibleToUser.map(payloadFor))
         }
       }
     }

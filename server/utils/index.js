@@ -64,6 +64,35 @@ module.exports.clampPositiveInt = (value, max) => {
   return Math.min(Math.floor(value), max)
 }
 
+/** Default page size when a list endpoint omits `limit`. */
+module.exports.DEFAULT_LIST_LIMIT = 50
+/** Hard cap so a client cannot request an unbounded page. */
+module.exports.MAX_LIST_LIMIT = 1000
+
+/**
+ * Parse `limit`/`page` query params for list endpoints.
+ * Omitted or `0` uses `defaultLimit`. Values above `maxLimit` are clamped.
+ *
+ * @param {{ limit?: *, page?: * }} query
+ * @param {{ defaultLimit?: number, maxLimit?: number }} [opts]
+ * @returns {{ limit: number, page: number, offset: number }}
+ */
+module.exports.parseListPagination = (query, opts = {}) => {
+  const defaultLimit = opts.defaultLimit ?? module.exports.DEFAULT_LIST_LIMIT
+  const maxLimit = opts.maxLimit ?? module.exports.MAX_LIST_LIMIT
+  const rawLimit = query?.limit
+  let limit = defaultLimit
+  if (rawLimit !== undefined && rawLimit !== null && rawLimit !== '') {
+    const n = Number(rawLimit)
+    if (Number.isFinite(n) && n > 0) {
+      limit = Math.min(Math.floor(n), maxLimit)
+    }
+  }
+  const rawPage = Number(query?.page)
+  const page = Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 0
+  return { limit, page, offset: page * limit }
+}
+
 const xmlToJSON = (xml) => {
   return new Promise((resolve, reject) => {
     parseString(xml, (err, results) => {

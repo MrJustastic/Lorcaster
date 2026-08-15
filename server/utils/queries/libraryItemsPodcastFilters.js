@@ -198,6 +198,10 @@ module.exports = {
           model: Database.libraryItemModel,
           required: true,
           where: libraryItemWhere,
+          attributes: {
+            exclude: ['libraryFiles'],
+            include: [[Sequelize.literal('IFNULL(json_array_length(`libraryItem`.`libraryFiles`), 0)'), 'fileCount']]
+          },
           include: libraryItemIncludes
         }
       ],

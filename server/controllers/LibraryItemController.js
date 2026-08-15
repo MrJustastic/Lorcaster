@@ -399,7 +399,7 @@ class LibraryItemController {
       query: { width, height, format, raw }
     } = req
 
-    if (req.query.ts) res.set('Cache-Control', 'private, max-age=86400')
+    res.set('Cache-Control', 'private, max-age=86400')
 
     const libraryItemId = req.params.id
     if (!libraryItemId) {
@@ -734,7 +734,7 @@ class LibraryItemController {
    * @param {Response} res
    */
   async batchGet(req, res) {
-    const libraryItemIds = req.body.libraryItemIds || []
+    const libraryItemIds = (req.body.libraryItemIds || []).slice(0, 100)
     if (!libraryItemIds.length) {
       return res.status(403).send('Invalid payload')
     }
@@ -1214,7 +1214,10 @@ class LibraryItemController {
    * @param {NextFunction} next
    */
   async middleware(req, res, next) {
-    req.libraryItem = await Database.libraryItemModel.getExpandedById(req.params.id)
+    const includeEntities = (req.query.include || '').split(',')
+    const isSimpleGet = req.method === 'GET' && !req.params.fileid && !req.path.includes('/play') && !req.path.includes('/download')
+    const wantsEpisodes = !isSimpleGet || req.query.expanded == 1 || includeEntities.includes('episodes') || includeEntities.includes('downloads')
+    req.libraryItem = await Database.libraryItemModel.getExpandedById(req.params.id, { includeEpisodes: wantsEpisodes })
     if (!req.libraryItem?.media) return res.sendStatus(404)
 
     // Check user can access this library item

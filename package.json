@@ -1,6 +1,6 @@
 {
   "name": "lorcaster",
-  "version": "2.35.1",
+  "version": "2.35.2",
   "buildNumber": 1,
   "description": "Self-hosted audiobook and podcast server (Lorcaster fork)",
   "main": "index.js",

@@ -371,17 +371,27 @@ class PlaybackSessionManager {
    * @returns {Promise<boolean>}
    */
   async syncSession(user, session, syncData) {
-    // TODO: Combine libraryItem query with library query
-    const libraryItem = await Database.libraryItemModel.getExpandedById(session.libraryItemId)
-    if (!libraryItem) {
-      Logger.error(`[PlaybackSessionManager] syncSession Library Item not found "${session.libraryItemId}"`)
-      return false
-    }
-
-    const library = await Database.libraryModel.findByPk(libraryItem.libraryId)
-    if (!library) {
-      Logger.error(`[PlaybackSessionManager] syncSession Library not found "${libraryItem.libraryId}"`)
-      return false
+    const libraryId = session.libraryId
+    let librarySettings = null
+    if (libraryId) {
+      const library = await Database.libraryModel.findByPk(libraryId, { attributes: ['id', 'settings', 'mediaType'] })
+      if (!library) {
+        Logger.error(`[PlaybackSessionManager] syncSession Library not found "${libraryId}"`)
+        return false
+      }
+      librarySettings = library.librarySettings
+    } else {
+      const libraryItem = await Database.libraryItemModel.findByPk(session.libraryItemId, { attributes: ['id', 'libraryId'] })
+      if (!libraryItem) {
+        Logger.error(`[PlaybackSessionManager] syncSession Library Item not found "${session.libraryItemId}"`)
+        return false
+      }
+      const library = await Database.libraryModel.findByPk(libraryItem.libraryId, { attributes: ['id', 'settings', 'mediaType'] })
+      if (!library) {
+        Logger.error(`[PlaybackSessionManager] syncSession Library not found "${libraryItem.libraryId}"`)
+        return false
+      }
+      librarySettings = library.librarySettings
     }
 
     session.currentTime = syncData.currentTime
@@ -389,14 +399,14 @@ class PlaybackSessionManager {
     Logger.debug(`[PlaybackSessionManager] syncSession "${session.id}" (Device: ${session.deviceDescription}) | Total Time Listened: ${session.timeListening}`)
 
     const updateResponse = await user.createUpdateMediaProgressFromPayload({
-      libraryItemId: libraryItem.id,
+      libraryItemId: session.libraryItemId,
       episodeId: session.episodeId,
       // duration no longer required (v2.15.1) but used if available
       duration: syncData.duration || session.duration || 0,
       currentTime: syncData.currentTime,
       progress: session.progress,
-      markAsFinishedTimeRemaining: library.librarySettings.markAsFinishedTimeRemaining,
-      markAsFinishedPercentComplete: library.librarySettings.markAsFinishedPercentComplete
+      markAsFinishedTimeRemaining: librarySettings.markAsFinishedTimeRemaining,
+      markAsFinishedPercentComplete: librarySettings.markAsFinishedPercentComplete
     })
     if (updateResponse.mediaProgress) {
       SocketAuthority.clientEmitter(user.id, 'user_item_progress_updated', {

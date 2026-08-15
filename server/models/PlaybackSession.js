@@ -64,6 +64,30 @@ class PlaybackSession extends Model {
     return playbackSessions.map((session) => this.getOldPlaybackSession(session))
   }
 
+  /**
+   * Paginated listening-session list, newest first.
+   * @param {import('sequelize').WhereOptions} where
+   * @param {{ limit: number, offset: number }} page
+   * @returns {Promise<{ sessions: object[], count: number }>}
+   */
+  static async getOldPlaybackSessionsPage(where, { limit, offset }) {
+    const { rows, count } = await this.findAndCountAll({
+      where,
+      include: [
+        {
+          model: this.sequelize.models.device
+        }
+      ],
+      order: [['updatedAt', 'DESC']],
+      limit,
+      offset
+    })
+    return {
+      sessions: rows.map((session) => this.getOldPlaybackSession(session)),
+      count
+    }
+  }
+
   static async getById(sessionId) {
     const playbackSession = await this.findByPk(sessionId, {
       include: [

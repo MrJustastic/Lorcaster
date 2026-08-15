@@ -406,7 +406,16 @@ module.exports = {
     const includeRSSFeed = include.includes('rssfeed')
     const includeMediaItemShare = !!user?.isAdminOrUp && include.includes('share')
 
-    let bookAttributes = null
+    // Listing never needs audioFiles/chapters/ebookFile JSON — those blobs can
+    // be hundreds of KB per multi-file book. Counts come from json_array_length.
+    let bookAttributes = {
+      exclude: ['audioFiles', 'chapters', 'ebookFile'],
+      include: [
+        [Sequelize.literal('IFNULL(json_array_length(`book`.`audioFiles`), 0)'), 'audioFileCount'],
+        [Sequelize.literal('IFNULL(json_array_length(`book`.`chapters`), 0)'), 'chapterCount'],
+        [Sequelize.literal("json_extract(`book`.`ebookFile`, '$.ebookFormat')"), 'ebookFormat']
+      ]
+    }
 
     const libraryItemWhere = {
       libraryId
@@ -611,6 +620,10 @@ module.exports = {
           model: Database.libraryItemModel,
           required: true,
           where: libraryItemWhere,
+          attributes: {
+            exclude: ['libraryFiles'],
+            include: [[Sequelize.literal('IFNULL(json_array_length(`libraryItem`.`libraryFiles`), 0)'), 'fileCount']]
+          },
           include: libraryItemIncludes
         },
         seriesInclude,

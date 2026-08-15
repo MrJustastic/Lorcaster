@@ -12,6 +12,8 @@ class CacheManager {
     this.CoverCachePath = null
     this.ImageCachePath = null
     this.ItemCachePath = null
+    /** @type {Map<string, Promise<string|null>>} */
+    this.inFlightResizes = new Map()
   }
 
   /**
@@ -44,42 +46,75 @@ class CacheManager {
 
     const cachePath = Path.join(this.CoverCachePath, `${libraryItemId}_${width}${height ? `x${height}` : ''}`) + '.' + format
 
-    // Cache exists
     if (await fs.pathExists(cachePath)) {
-      if (global.XAccel) {
-        const encodedURI = encodeUriPath(global.XAccel + cachePath)
-        Logger.debug(`Use X-Accel to serve static file ${encodedURI}`)
-        return res.status(204).header({ 'X-Accel-Redirect': encodedURI }).send()
-      }
-
-      const r = fs.createReadStream(cachePath)
-      const ps = new stream.PassThrough()
-      stream.pipeline(r, ps, (err) => {
-        if (err) {
-          console.log(err)
-          return res.sendStatus(500)
-        }
-      })
-      return ps.pipe(res)
+      return this.sendCachedImage(res, cachePath)
     }
 
-    // Cached cover does not exist, generate it
-    const coverPath = await Database.libraryItemModel.getCoverPath(libraryItemId)
-    if (!coverPath || !(await fs.pathExists(coverPath))) {
-      return res.sendStatus(404)
-    }
+    const writtenFile = await this.resizeOnce(cachePath, async () => {
+      const coverPath = await Database.libraryItemModel.getCoverPath(libraryItemId)
+      if (!coverPath || !(await fs.pathExists(coverPath))) return null
+      return resizeImage(coverPath, cachePath, width, height)
+    })
+    if (!writtenFile) return res.sendStatus(404)
 
-    const writtenFile = await resizeImage(coverPath, cachePath, width, height)
-    if (!writtenFile) return res.sendStatus(500)
+    return this.sendCachedImage(res, writtenFile)
+  }
 
+  /**
+   * Deduplicate concurrent ffmpeg resizes for the same cache path.
+   * @param {string} cachePath
+   * @param {() => Promise<string|null>} producer
+   * @returns {Promise<string|null>}
+   */
+  resizeOnce(cachePath, producer) {
+    const existing = this.inFlightResizes.get(cachePath)
+    if (existing) return existing
+    const pending = Promise.resolve()
+      .then(producer)
+      .finally(() => this.inFlightResizes.delete(cachePath))
+    this.inFlightResizes.set(cachePath, pending)
+    return pending
+  }
+
+  /**
+   * Stream a cached image with validators so clients can skip the body.
+   * @param {import('express').Response} res
+   * @param {string} filePath
+   */
+  async sendCachedImage(res, filePath) {
     if (global.XAccel) {
-      const encodedURI = encodeUriPath(global.XAccel + writtenFile)
+      const encodedURI = encodeUriPath(global.XAccel + filePath)
       Logger.debug(`Use X-Accel to serve static file ${encodedURI}`)
       return res.status(204).header({ 'X-Accel-Redirect': encodedURI }).send()
     }
 
-    var readStream = fs.createReadStream(writtenFile)
-    readStream.pipe(res)
+    let stat
+    try {
+      stat = await fs.stat(filePath)
+    } catch (error) {
+      Logger.error(`[CacheManager] Failed to stat cache file "${filePath}"`, error)
+      return res.sendStatus(500)
+    }
+
+    const etag = `W/"${stat.size.toString(16)}-${Math.floor(stat.mtimeMs).toString(16)}"`
+    res.set({
+      'Cache-Control': 'private, max-age=86400',
+      ETag: etag,
+      'Last-Modified': stat.mtime.toUTCString()
+    })
+    if (res.req && (res.req.headers['if-none-match'] === etag || (res.req.headers['if-modified-since'] && Date.parse(res.req.headers['if-modified-since']) >= stat.mtimeMs))) {
+      return res.status(304).end()
+    }
+
+    const r = fs.createReadStream(filePath)
+    const ps = new stream.PassThrough()
+    stream.pipeline(r, ps, (err) => {
+      if (err) {
+        Logger.error(`[CacheManager] Failed to stream cache file "${filePath}"`, err)
+        if (!res.headersSent) res.sendStatus(500)
+      }
+    })
+    return ps.pipe(res)
   }
 
   purgeCoverCache(libraryItemId) {
@@ -151,31 +186,20 @@ class CacheManager {
 
     res.type(`image/${format}`)
 
-    var cachePath = Path.join(this.ImageCachePath, `${authorId}_${width}${height ? `x${height}` : ''}`) + '.' + format
+    const cachePath = Path.join(this.ImageCachePath, `${authorId}_${width}${height ? `x${height}` : ''}`) + '.' + format
 
-    // Cache exists
     if (await fs.pathExists(cachePath)) {
-      const r = fs.createReadStream(cachePath)
-      const ps = new stream.PassThrough()
-      stream.pipeline(r, ps, (err) => {
-        if (err) {
-          console.log(err)
-          return res.sendStatus(500)
-        }
-      })
-      return ps.pipe(res)
+      return this.sendCachedImage(res, cachePath)
     }
 
-    const author = await Database.authorModel.findByPk(authorId)
-    if (!author || !author.imagePath || !(await fs.pathExists(author.imagePath))) {
-      return res.sendStatus(404)
-    }
+    const writtenFile = await this.resizeOnce(cachePath, async () => {
+      const author = await Database.authorModel.findByPk(authorId)
+      if (!author || !author.imagePath || !(await fs.pathExists(author.imagePath))) return null
+      return resizeImage(author.imagePath, cachePath, width, height)
+    })
+    if (!writtenFile) return res.sendStatus(404)
 
-    let writtenFile = await resizeImage(author.imagePath, cachePath, width, height)
-    if (!writtenFile) return res.sendStatus(500)
-
-    var readStream = fs.createReadStream(writtenFile)
-    readStream.pipe(res)
+    return this.sendCachedImage(res, writtenFile)
   }
 }
 module.exports = new CacheManager()

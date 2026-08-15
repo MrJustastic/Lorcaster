@@ -35,17 +35,16 @@ class MeController {
    * @param {Response} res
    */
   async getListeningSessions(req, res) {
-    const listeningSessions = await this.getUserListeningSessionsHelper(req.user.id)
-
     const itemsPerPage = toNumber(req.query.itemsPerPage, 10) || 10
     const page = toNumber(req.query.page, 0)
-
-    const start = page * itemsPerPage
-    const sessions = listeningSessions.slice(start, start + itemsPerPage)
+    const { sessions, count } = await this.getUserListeningSessionsHelper(req.user.id, {
+      limit: itemsPerPage,
+      offset: page * itemsPerPage
+    })
 
     const payload = {
-      total: listeningSessions.length,
-      numPages: Math.ceil(listeningSessions.length / itemsPerPage),
+      total: count,
+      numPages: Math.ceil(count / itemsPerPage),
       page,
       itemsPerPage,
       sessions
@@ -78,17 +77,16 @@ class MeController {
     }
 
     const mediaItemId = episode?.id || libraryItem.mediaId
-    let listeningSessions = await this.getUserItemListeningSessionsHelper(req.user.id, mediaItemId)
-
     const itemsPerPage = toNumber(req.query.itemsPerPage, 10) || 10
     const page = toNumber(req.query.page, 0)
-
-    const start = page * itemsPerPage
-    const sessions = listeningSessions.slice(start, start + itemsPerPage)
+    const { sessions, count } = await this.getUserItemListeningSessionsHelper(req.user.id, mediaItemId, {
+      limit: itemsPerPage,
+      offset: page * itemsPerPage
+    })
 
     const payload = {
-      total: listeningSessions.length,
-      numPages: Math.ceil(listeningSessions.length / itemsPerPage),
+      total: count,
+      numPages: Math.ceil(count / itemsPerPage),
       page,
       itemsPerPage,
       sessions
@@ -163,7 +161,12 @@ class MeController {
       return res.status(mediaProgressResponse.statusCode || 400).send(mediaProgressResponse.error)
     }
 
-    SocketAuthority.clientEmitter(req.user.id, 'user_updated', req.user.toOldJSONForBrowser())
+    if (mediaProgressResponse.mediaProgress) {
+      SocketAuthority.clientEmitter(req.user.id, 'user_item_progress_updated', {
+        id: mediaProgressResponse.mediaProgress.id,
+        data: mediaProgressResponse.mediaProgress.getOldMediaProgress()
+      })
+    }
     res.sendStatus(200)
   }
 
@@ -180,19 +183,18 @@ class MeController {
       return res.status(400).send('Missing request payload')
     }
 
-    let hasUpdated = false
     for (const itemProgress of itemProgressPayloads) {
       const mediaProgressResponse = await req.user.createUpdateMediaProgressFromPayload(itemProgress)
       if (mediaProgressResponse.error) {
         Logger.error(`[MeController] batchUpdateMediaProgress: ${mediaProgressResponse.error}`)
         continue
-      } else {
-        hasUpdated = true
       }
-    }
-
-    if (hasUpdated) {
-      SocketAuthority.clientEmitter(req.user.id, 'user_updated', req.user.toOldJSONForBrowser())
+      if (mediaProgressResponse.mediaProgress) {
+        SocketAuthority.clientEmitter(req.user.id, 'user_item_progress_updated', {
+          id: mediaProgressResponse.mediaProgress.id,
+          data: mediaProgressResponse.mediaProgress.getOldMediaProgress()
+        })
+      }
     }
 
     res.sendStatus(200)
@@ -347,7 +349,7 @@ class MeController {
 
     const mediaProgressesInProgress = req.user.mediaProgresses.filter((mp) => !mp.isFinished && (mp.currentTime > 0 || mp.ebookProgress > 0))
 
-    const libraryItemsIds = [...new Set(mediaProgressesInProgress.map((mp) => mp.extraData?.libraryItemId).filter((id) => id))]
+    const libraryItemsIds = [...new Set(mediaProgressesInProgress.map((mp) => mp.extraData?.libraryItemId).filter((id) => id))].slice(0, limit)
     const libraryItems = await Database.libraryItemModel.findAllExpandedWhere({ id: libraryItemsIds })
 
     let itemsInProgress = []

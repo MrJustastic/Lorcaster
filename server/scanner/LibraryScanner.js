@@ -161,23 +161,49 @@ class LibraryScanner {
     const existingLibraryItems = await Database.libraryItemModel.findAll({
       where: {
         libraryId: libraryScan.libraryId
-      }
+      },
+      attributes: ['id', 'path', 'ino', 'relPath', 'isMissing', 'isFile', 'mediaType', 'mediaId', 'libraryId', 'libraryFiles']
     })
 
     if (this.shouldCancelScan(libraryScan)) return true
+
+    const remainingByPath = new Map()
+    const remainingByIno = new Map()
+    const remainingByFileIno = new Map()
+    for (const lid of libraryItemDataFound) {
+      remainingByPath.set(lid.path, lid)
+      if (lid.ino) remainingByIno.set(String(lid.ino), lid)
+      for (const lf of lid.libraryFiles || []) {
+        if (lf.ino) remainingByFileIno.set(String(lf.ino), lid)
+      }
+    }
+    const takeFound = (lid) => {
+      if (!lid) return null
+      remainingByPath.delete(lid.path)
+      if (lid.ino) remainingByIno.delete(String(lid.ino))
+      for (const lf of lid.libraryFiles || []) {
+        if (lf.ino) remainingByFileIno.delete(String(lf.ino))
+      }
+      return lid
+    }
 
     const libraryItemIdsMissing = []
     let libraryItemsUpdated = []
     for (const existingLibraryItem of existingLibraryItems) {
       // First try to find matching library item with exact file path
-      let libraryItemData = libraryItemDataFound.find((lid) => lid.path === existingLibraryItem.path)
+      let libraryItemData = remainingByPath.get(existingLibraryItem.path) || null
       if (!libraryItemData) {
         // Fallback to finding matching library item with matching inode value
-        libraryItemData = libraryItemDataFound.find((lid) => ItemToItemInoMatch(lid, existingLibraryItem) || ItemToFileInoMatch(lid, existingLibraryItem) || ItemToFileInoMatch(existingLibraryItem, lid))
+        libraryItemData =
+          (existingLibraryItem.ino && remainingByIno.get(String(existingLibraryItem.ino))) ||
+          (existingLibraryItem.ino && remainingByFileIno.get(String(existingLibraryItem.ino))) ||
+          (existingLibraryItem.libraryFiles || []).reduce((found, lf) => found || (lf.ino && remainingByIno.get(String(lf.ino))) || (lf.ino && remainingByFileIno.get(String(lf.ino))) || null, null) ||
+          null
         if (libraryItemData) {
           libraryScan.addLog(LogLevel.INFO, `Library item with path "${existingLibraryItem.path}" was not found, but library item inode "${existingLibraryItem.ino}" was found at path "${libraryItemData.path}"`)
         }
       }
+      libraryItemData = takeFound(libraryItemData)
 
       if (!libraryItemData) {
         // Podcast folder can have no episodes and still be valid
@@ -257,6 +283,7 @@ class LibraryScanner {
     if (this.shouldCancelScan(libraryScan)) return true
 
     // Add new library items
+    libraryItemDataFound = [...new Set(remainingByPath.values())]
     if (libraryItemDataFound.length) {
       let newLibraryItems = []
       for (const libraryItemData of libraryItemDataFound) {
@@ -316,36 +343,41 @@ class LibraryScanner {
       return []
     }
 
-    const items = []
-    for (const libraryItemPath in libraryItemGrouping) {
-      let isFile = false // item is not in a folder
-      let libraryItemData = null
-      let fileObjs = []
-      if (libraryItemPath === libraryItemGrouping[libraryItemPath]) {
-        // Media file in root only get title
-        libraryItemData = {
-          mediaMetadata: {
-            title: Path.basename(libraryItemPath, Path.extname(libraryItemPath))
-          },
-          path: Path.posix.join(folderPath, libraryItemPath),
-          relPath: libraryItemPath
+    const groupingEntries = Object.entries(libraryItemGrouping)
+    const items = new Array(groupingEntries.length)
+    let next = 0
+    const concurrency = Math.min(8, groupingEntries.length)
+    const worker = async () => {
+      while (next < groupingEntries.length) {
+        const idx = next++
+        const [libraryItemPath, grouping] = groupingEntries[idx]
+        let isFile = false // item is not in a folder
+        let libraryItemData = null
+        let fileObjs = []
+        if (libraryItemPath === grouping) {
+          // Media file in root only get title
+          libraryItemData = {
+            mediaMetadata: {
+              title: Path.basename(libraryItemPath, Path.extname(libraryItemPath))
+            },
+            path: Path.posix.join(folderPath, libraryItemPath),
+            relPath: libraryItemPath
+          }
+          fileObjs = await scanUtils.buildLibraryFile(folderPath, [libraryItemPath])
+          isFile = true
+        } else {
+          libraryItemData = scanUtils.getDataFromMediaDir(library.mediaType, folderPath, libraryItemPath)
+          fileObjs = await scanUtils.buildLibraryFile(libraryItemData.path, grouping)
         }
-        fileObjs = await scanUtils.buildLibraryFile(folderPath, [libraryItemPath])
-        isFile = true
-      } else {
-        libraryItemData = scanUtils.getDataFromMediaDir(library.mediaType, folderPath, libraryItemPath)
-        fileObjs = await scanUtils.buildLibraryFile(libraryItemData.path, libraryItemGrouping[libraryItemPath])
-      }
 
-      const libraryItemFolderStats = await fileUtils.getFileTimestampsWithIno(libraryItemData.path)
+        const libraryItemFolderStats = await fileUtils.getFileTimestampsWithIno(libraryItemData.path)
 
-      if (!libraryItemFolderStats.ino) {
-        Logger.warn(`[LibraryScanner] Library item folder "${libraryItemData.path}" has no inode value`)
-        continue
-      }
+        if (!libraryItemFolderStats.ino) {
+          Logger.warn(`[LibraryScanner] Library item folder "${libraryItemData.path}" has no inode value`)
+          continue
+        }
 
-      items.push(
-        new LibraryItemScanData({
+        items[idx] = new LibraryItemScanData({
           libraryFolderId: folder.id,
           libraryId: folder.libraryId,
           mediaType: library.mediaType,
@@ -359,9 +391,10 @@ class LibraryScanner {
           mediaMetadata: libraryItemData.mediaMetadata || null,
           libraryFiles: fileObjs
         })
-      )
+      }
     }
-    return items
+    await Promise.all(Array.from({ length: Math.max(concurrency, 1) }, () => worker()))
+    return items.filter(Boolean)
   }
 
   /**

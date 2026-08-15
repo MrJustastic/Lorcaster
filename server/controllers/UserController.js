@@ -433,29 +433,25 @@ class UserController {
    * @param {Response} res
    */
   async getListeningSessions(req, res) {
-    var listeningSessions = await this.getUserListeningSessionsHelper(req.params.id)
-
     const itemsPerPage = toNumber(req.query.itemsPerPage, 10) || 10
     const page = toNumber(req.query.page, 0)
+    const { sessions, count } = await this.getUserListeningSessionsHelper(req.params.id, {
+      limit: itemsPerPage,
+      offset: page * itemsPerPage
+    })
 
-    const start = page * itemsPerPage
-    // Map user to sessions to match the format of the sessions endpoint
-    const sessions = listeningSessions.slice(start, start + itemsPerPage).map((session) => {
-      return {
+    const payload = {
+      total: count,
+      numPages: Math.ceil(count / itemsPerPage),
+      page,
+      itemsPerPage,
+      sessions: sessions.map((session) => ({
         ...session,
         user: {
           id: req.reqUser.id,
           username: req.reqUser.username
         }
-      }
-    })
-
-    const payload = {
-      total: listeningSessions.length,
-      numPages: Math.ceil(listeningSessions.length / itemsPerPage),
-      page,
-      itemsPerPage,
-      sessions
+      }))
     }
 
     res.json(payload)

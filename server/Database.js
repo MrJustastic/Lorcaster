@@ -204,9 +204,13 @@ class Database {
 
     await this.loadData()
 
-    Logger.info(`[Database] running ANALYZE`)
-    await this.sequelize.query('ANALYZE')
-    Logger.info(`[Database] ANALYZE completed`)
+    // Full-DB ANALYZE is expensive; only needed after a brand-new schema or
+    // when an operator explicitly asks. Migrations can request it via env.
+    if (this.isNew || process.env.SQLITE_ANALYZE === '1') {
+      Logger.info(`[Database] running ANALYZE`)
+      await this.sequelize.query('ANALYZE')
+      Logger.info(`[Database] ANALYZE completed`)
+    }
   }
 
   /**
@@ -234,7 +238,12 @@ class Database {
       storage: this.dbPath,
       logging: logging,
       benchmark: benchmark,
-      transactionType: 'IMMEDIATE'
+      transactionType: 'IMMEDIATE',
+      retry: {
+        match: [/SQLITE_BUSY/],
+        name: 'query',
+        max: 5
+      }
     })
 
     // Helper function
@@ -242,6 +251,16 @@ class Database {
 
     try {
       await this.sequelize.authenticate()
+
+      // WAL lets readers proceed during a library scan; busy_timeout absorbs
+      // short writer locks instead of failing the request immediately.
+      try {
+        await this.sequelize.query('PRAGMA journal_mode = WAL')
+        await this.sequelize.query('PRAGMA synchronous = NORMAL')
+        await this.sequelize.query('PRAGMA busy_timeout = 5000')
+      } catch (error) {
+        Logger.error(`[Database] Failed to set SQLite WAL pragmas`, error)
+      }
 
       // Set SQLite pragmas from environment variables
       const allowedPragmas = [
