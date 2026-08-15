@@ -12,9 +12,12 @@ class ApiCacheManager {
   constructor(cache = new LRUCache(this.defaultCacheOptions), ttlOptions = this.defaultTtlOptions) {
     this.cache = cache
     this.ttlOptions = ttlOptions
+    this.hooksRegistered = false
   }
 
   init(database = Database) {
+    if (this.hooksRegistered) return
+    this.hooksRegistered = true
     let hooks = ['afterCreate', 'afterUpdate', 'afterDestroy', 'afterBulkCreate', 'afterBulkUpdate', 'afterBulkDestroy', 'afterUpsert']
     hooks.forEach((hook) => database.sequelize.addHook(hook, (model) => this.clear(model, hook)))
   }
@@ -64,12 +67,10 @@ class ApiCacheManager {
   }
 
   /**
-   * Reset hooks and clear cache. Used when applying backups
+   * Clear cache after applying a backup. Hooks are registered once in init().
    */
   reset() {
     Logger.info(`[ApiCacheManager] Resetting cache`)
-
-    this.init()
     this.cache.clear()
   }
 

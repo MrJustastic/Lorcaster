@@ -991,11 +991,10 @@ WHERE EXISTS (
      */
     async init() {
       if (!this.supportsUnaccent) return
-      const escapedQuery = this.sequelize.escape(this.query)
-      const normalizedQueryExpression = this.normalize(escapedQuery)
-      const normalizedQueryResult = await this.sequelize.query(`SELECT ${normalizedQueryExpression} as normalized_query`)
-      const normalizedQuery = normalizedQueryResult[0][0].normalized_query
-      this.hasAccents = escapedQuery !== this.sequelize.escape(normalizedQuery)
+      // NFD + strip combining marks matches Postgres/SQLite unaccent for Latin.
+      // Avoids a round-trip SELECT unaccent(...) on every search.
+      const stripped = this.query.normalize('NFD').replace(/\p{M}/gu, '')
+      this.hasAccents = stripped !== this.query
     }
 
     /**

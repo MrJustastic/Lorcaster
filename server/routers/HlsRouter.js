@@ -84,7 +84,7 @@ class HlsRouter {
           if (startTimeForReset) {
             // HLS.js will restart the stream at the new time
             Logger.info(`[HlsRouter] Resetting Stream - notify client @${startTimeForReset}s`)
-            SocketAuthority.emitter('stream_reset', {
+            SocketAuthority.clientEmitter(stream.user.id, 'stream_reset', {
               startTime: startTimeForReset,
               streamId: stream.id
             })

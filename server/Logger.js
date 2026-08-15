@@ -107,31 +107,41 @@ class Logger {
     NOTE: 'log'
   }
 
+  #shouldLog(levelName) {
+    const level = LogLevel[levelName]
+    return level >= LogLevel.FATAL || level >= this.logLevel
+  }
+
   #log(levelName, source, ...args) {
     const level = LogLevel[levelName]
-    if (level < LogLevel.FATAL && level < this.logLevel) return
+    if (!this.#shouldLog(levelName)) return
     const consoleMethod = Logger.ConsoleMethods[levelName]
     console[consoleMethod](`[${this.timestamp}] ${levelName}:`, ...args)
     return this.#logToFileAndListeners(level, levelName, args, source)
   }
 
   trace(...args) {
+    if (!this.#shouldLog('TRACE')) return
     this.#log('TRACE', this.source, ...args)
   }
 
   debug(...args) {
+    if (!this.#shouldLog('DEBUG')) return
     this.#log('DEBUG', this.source, ...args)
   }
 
   info(...args) {
+    if (!this.#shouldLog('INFO')) return
     this.#log('INFO', this.source, ...args)
   }
 
   warn(...args) {
+    if (!this.#shouldLog('WARN')) return
     this.#log('WARN', this.source, ...args)
   }
 
   error(...args) {
+    if (!this.#shouldLog('ERROR')) return
     this.#log('ERROR', this.source, ...args)
   }
 
@@ -140,6 +150,7 @@ class Logger {
   }
 
   note(...args) {
+    if (!this.#shouldLog('NOTE')) return
     this.#log('NOTE', this.source, ...args)
   }
 }

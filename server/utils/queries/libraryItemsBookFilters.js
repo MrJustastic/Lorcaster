@@ -6,7 +6,8 @@ const authorFilters = require('./authorFilters')
 const ShareManager = require('../../managers/ShareManager')
 const { profile } = require('../profiler')
 const stringifySequelizeQuery = require('../stringifySequelizeQuery')
-const countCache = new Map()
+const { LRUCache } = require('lru-cache')
+const countCache = new LRUCache({ max: 500 })
 
 module.exports = {
   /**
@@ -729,7 +730,7 @@ module.exports = {
     bookWhere.push(...userPermissionBookWhere.bookWhere)
 
     let includeAttributes = [[Sequelize.literal('(SELECT max(mp.updatedAt) FROM bookSeries bs, mediaProgresses mp WHERE mp.mediaItemId = bs.bookId AND mp.userId = :userId AND bs.seriesId = series.id)'), 'recent_progress']]
-    let booksNotFinishedQuery = `SELECT count(*) FROM bookSeries bs LEFT OUTER JOIN mediaProgresses mp ON mp.mediaItemId = bs.bookId AND mp.userId = :userId WHERE bs.seriesId = series.id AND (mp.isFinished = 0 OR mp.isFinished IS NULL)`
+    let booksNotFinishedQuery = `SELECT 1 FROM bookSeries bs LEFT OUTER JOIN mediaProgresses mp ON mp.mediaItemId = bs.bookId AND mp.userId = :userId WHERE bs.seriesId = series.id AND (mp.isFinished = 0 OR mp.isFinished IS NULL)`
 
     if (library.settings.onlyShowLaterBooksInContinueSeries) {
       const maxSequenceQuery = `(SELECT CAST(max(bs.sequence) as FLOAT) FROM bookSeries bs, mediaProgresses mp WHERE mp.mediaItemId = bs.bookId AND mp.isFinished = 1 AND mp.userId = :userId AND bs.seriesId = series.id)`
@@ -746,17 +747,10 @@ module.exports = {
           },
           libraryId
         },
-        // TODO: Simplify queries
-        // Has at least 1 book finished
-        Sequelize.where(Sequelize.literal(`(SELECT count(*) FROM mediaProgresses mp, bookSeries bs WHERE bs.seriesId = series.id AND mp.mediaItemId = bs.bookId AND mp.userId = :userId AND mp.isFinished = 1)`), {
-          [Sequelize.Op.gte]: 1
-        }),
-        // Has at least 1 book not finished (that has a sequence number higher than the highest already read, if library config is toggled)
-        Sequelize.where(Sequelize.literal(`(${booksNotFinishedQuery})`), {
-          [Sequelize.Op.gte]: 1
-        }),
-        // Has no books in progress
-        Sequelize.where(Sequelize.literal(`(SELECT count(*) FROM mediaProgresses mp, bookSeries bs WHERE mp.mediaItemId = bs.bookId AND mp.userId = :userId AND bs.seriesId = series.id AND mp.isFinished = 0 AND mp.currentTime > 0)`), 0)
+        // EXISTS stops at the first match instead of counting every row.
+        Sequelize.where(Sequelize.literal(`EXISTS (SELECT 1 FROM mediaProgresses mp, bookSeries bs WHERE bs.seriesId = series.id AND mp.mediaItemId = bs.bookId AND mp.userId = :userId AND mp.isFinished = 1)`), 1),
+        Sequelize.where(Sequelize.literal(`EXISTS (${booksNotFinishedQuery})`), 1),
+        Sequelize.where(Sequelize.literal(`EXISTS (SELECT 1 FROM mediaProgresses mp, bookSeries bs WHERE mp.mediaItemId = bs.bookId AND mp.userId = :userId AND bs.seriesId = series.id AND mp.isFinished = 0 AND mp.currentTime > 0)`), 0)
       ],
       attributes: {
         include: includeAttributes
@@ -1184,86 +1178,63 @@ module.exports = {
     }
 
     const matchJsonValue = textSearchQuery.matchExpression('json_each.value')
-
-    // Search narrators
-    const narratorMatches = []
-    const [narratorResults] = await Database.sequelize.query(`SELECT value, count(*) AS numBooks FROM books b, libraryItems li, json_each(b.narrators) WHERE json_valid(b.narrators) AND ${matchJsonValue} AND b.id = li.mediaId AND li.libraryId = :libraryId GROUP BY value LIMIT :limit OFFSET :offset;`, {
-      replacements: {
-        libraryId: library.id,
-        limit,
-        offset
-      },
-      raw: true
-    })
-    for (const row of narratorResults) {
-      narratorMatches.push({
-        name: row.value,
-        numBooks: row.numBooks
-      })
-    }
-
-    // Search tags
-    const tagMatches = []
-    const [tagResults] = await Database.sequelize.query(`SELECT value, count(*) AS numItems FROM books b, libraryItems li, json_each(b.tags) WHERE json_valid(b.tags) AND ${matchJsonValue} AND b.id = li.mediaId AND li.libraryId = :libraryId GROUP BY value ORDER BY numItems DESC LIMIT :limit OFFSET :offset;`, {
-      replacements: {
-        libraryId: library.id,
-        limit,
-        offset
-      },
-      raw: true
-    })
-    for (const row of tagResults) {
-      tagMatches.push({
-        name: row.value,
-        numItems: row.numItems
-      })
-    }
-
-    // Search genres
-    const genreMatches = []
-    const [genreResults] = await Database.sequelize.query(`SELECT value, count(*) AS numItems FROM books b, libraryItems li, json_each(b.genres) WHERE json_valid(b.genres) AND ${matchJsonValue} AND b.id = li.mediaId AND li.libraryId = :libraryId GROUP BY value ORDER BY numItems DESC LIMIT :limit OFFSET :offset;`, {
-      replacements: {
-        libraryId: library.id,
-        limit,
-        offset
-      },
-      raw: true
-    })
-    for (const row of genreResults) {
-      genreMatches.push({
-        name: row.value,
-        numItems: row.numItems
-      })
-    }
-
-    // Search series
     const matchName = textSearchQuery.matchExpression('name')
-    const allSeries = await Database.seriesModel.findAll({
-      where: {
-        [Sequelize.Op.and]: [
-          Sequelize.literal(matchName),
-          {
-            libraryId: library.id
-          }
-        ]
-      },
-      replacements: userPermissionBookWhere.replacements,
-      include: {
-        separate: true,
-        model: Database.bookSeriesModel,
+    const jsonReplacements = { libraryId: library.id, limit, offset }
+
+    const [[narratorResults], [tagResults], [genreResults], allSeries, authorMatches] = await Promise.all([
+      Database.sequelize.query(`SELECT value, count(*) AS numBooks FROM books b, libraryItems li, json_each(b.narrators) WHERE json_valid(b.narrators) AND ${matchJsonValue} AND b.id = li.mediaId AND li.libraryId = :libraryId GROUP BY value LIMIT :limit OFFSET :offset;`, {
+        replacements: jsonReplacements,
+        raw: true
+      }),
+      Database.sequelize.query(`SELECT value, count(*) AS numItems FROM books b, libraryItems li, json_each(b.tags) WHERE json_valid(b.tags) AND ${matchJsonValue} AND b.id = li.mediaId AND li.libraryId = :libraryId GROUP BY value ORDER BY numItems DESC LIMIT :limit OFFSET :offset;`, {
+        replacements: jsonReplacements,
+        raw: true
+      }),
+      Database.sequelize.query(`SELECT value, count(*) AS numItems FROM books b, libraryItems li, json_each(b.genres) WHERE json_valid(b.genres) AND ${matchJsonValue} AND b.id = li.mediaId AND li.libraryId = :libraryId GROUP BY value ORDER BY numItems DESC LIMIT :limit OFFSET :offset;`, {
+        replacements: jsonReplacements,
+        raw: true
+      }),
+      Database.seriesModel.findAll({
+        where: {
+          [Sequelize.Op.and]: [
+            Sequelize.literal(matchName),
+            {
+              libraryId: library.id
+            }
+          ]
+        },
+        replacements: userPermissionBookWhere.replacements,
         include: {
-          model: Database.bookModel,
-          where: userPermissionBookWhere.bookWhere,
+          separate: true,
+          model: Database.bookSeriesModel,
           include: {
-            model: Database.libraryItemModel
+            model: Database.bookModel,
+            where: userPermissionBookWhere.bookWhere,
+            include: {
+              model: Database.libraryItemModel
+            }
           }
-        }
-      },
-      subQuery: false,
-      distinct: true,
-      limit,
-      offset
-    })
+        },
+        subQuery: false,
+        distinct: true,
+        limit,
+        offset
+      }),
+      authorFilters.search(library.id, textSearchQuery, limit, offset)
+    ])
+
+    const narratorMatches = narratorResults.map((row) => ({
+      name: row.value,
+      numBooks: row.numBooks
+    }))
+    const tagMatches = tagResults.map((row) => ({
+      name: row.value,
+      numItems: row.numItems
+    }))
+    const genreMatches = genreResults.map((row) => ({
+      name: row.value,
+      numItems: row.numItems
+    }))
     const seriesMatches = []
     for (const series of allSeries) {
       const books = series.bookSeries.map((bs) => {
@@ -1280,9 +1251,6 @@ module.exports = {
         })
       }
     }
-
-    // Search authors
-    const authorMatches = await authorFilters.search(library.id, textSearchQuery, limit, offset)
 
     return {
       book: itemMatches,

@@ -184,27 +184,39 @@ class CronManager {
     }
     this.podcastCronExpressionsExecuting.push(expression)
 
-    const libraryItemIds = podcastCron.libraryItemIds
+    const libraryItemIds = [...podcastCron.libraryItemIds]
     Logger.debug(`[CronManager] Start executing podcast cron ${expression} for ${libraryItemIds.length} item(s)`)
 
-    // Get podcast library items to check
     const libraryItems = []
-    for (const libraryItemId of libraryItemIds) {
-      const libraryItem = await Database.libraryItemModel.getExpandedById(libraryItemId)
-      if (!libraryItem) {
+    const loadOne = async (libraryItemId) => {
+      const libraryItem = await Database.libraryItemModel.getExpandedById(libraryItemId, { includeEpisodes: false })
+      if (!libraryItem?.media) {
         Logger.error(`[CronManager] Library item ${libraryItemId} not found for episode check cron ${expression}`)
-        podcastCron.libraryItemIds = podcastCron.libraryItemIds.filter((lid) => lid !== libraryItemId) // Filter it out
-      } else {
-        libraryItems.push(libraryItem)
+        podcastCron.libraryItemIds = podcastCron.libraryItemIds.filter((lid) => lid !== libraryItemId)
+        return
       }
+      libraryItem.media.podcastEpisodes = await Database.podcastEpisodeModel.findAll({
+        where: { podcastId: libraryItem.media.id },
+        attributes: ['id', 'publishedAt', 'enclosureURL', 'extraData']
+      })
+      libraryItems.push(libraryItem)
     }
 
-    // Run episode checks
+    let next = 0
+    const concurrency = Math.min(3, libraryItemIds.length)
+    await Promise.all(
+      Array.from({ length: concurrency }, async () => {
+        while (next < libraryItemIds.length) {
+          const libraryItemId = libraryItemIds[next++]
+          await loadOne(libraryItemId)
+        }
+      })
+    )
+
     for (const libraryItem of libraryItems) {
       const keepAutoDownloading = await this.podcastManager.runEpisodeCheck(libraryItem)
       if (!keepAutoDownloading) {
-        // auto download was disabled
-        podcastCron.libraryItemIds = podcastCron.libraryItemIds.filter((lid) => lid !== libraryItem.id) // Filter it out
+        podcastCron.libraryItemIds = podcastCron.libraryItemIds.filter((lid) => lid !== libraryItem.id)
       }
     }
 

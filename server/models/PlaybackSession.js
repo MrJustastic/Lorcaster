@@ -1,4 +1,4 @@
-const { DataTypes, Model } = require('sequelize')
+const { DataTypes, Model, Op, QueryTypes } = require('sequelize')
 
 const oldPlaybackSession = require('../objects/PlaybackSession')
 
@@ -86,6 +86,46 @@ class PlaybackSession extends Model {
       sessions: rows.map((session) => this.getOldPlaybackSession(session)),
       count
     }
+  }
+
+  /**
+   * Latest session per user (one grouped query + one fetch), for GET /users?include=latestSession.
+   * @param {string[]} userIds
+   * @returns {Promise<Record<string, object>>}
+   */
+  static async getLatestOldPlaybackSessionsByUserIds(userIds) {
+    if (!userIds?.length) return {}
+    const sequelize = this.sequelize
+    const latest = await sequelize.query(
+      `SELECT userId, MAX(updatedAt) AS maxUpdated
+       FROM playbackSessions
+       WHERE userId IN (:userIds)
+       GROUP BY userId`,
+      {
+        replacements: { userIds },
+        type: QueryTypes.SELECT
+      }
+    )
+    if (!latest.length) return {}
+
+    const sessions = await this.findAll({
+      where: {
+        [Op.or]: latest.map((row) => ({ userId: row.userId, updatedAt: row.maxUpdated }))
+      },
+      include: [
+        {
+          model: this.sequelize.models.device
+        }
+      ]
+    })
+
+    const byUser = {}
+    for (const session of sessions) {
+      if (!byUser[session.userId]) {
+        byUser[session.userId] = this.getOldPlaybackSession(session)
+      }
+    }
+    return byUser
   }
 
   static async getById(sessionId) {

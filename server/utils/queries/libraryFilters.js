@@ -443,14 +443,6 @@ module.exports = {
    */
   async getFilterData(mediaType, libraryId) {
     const cachedFilterData = Database.libraryFilterData[libraryId]
-    if (cachedFilterData) {
-      const cacheElapsed = Date.now() - cachedFilterData.loadedAt
-      // Cache library filters for 30 mins
-      // TODO: Keep cached filter data up-to-date on updates
-      if (cacheElapsed < 1000 * 60 * 30) {
-        return cachedFilterData
-      }
-    }
     const start = Date.now() // Temp for checking load times
 
     const data = {
@@ -548,27 +540,27 @@ module.exports = {
       // Set podcast count for later comparison
       data.podcastCount = podcastCountFromDatabase
     } else {
-      const bookCountFromDatabase = await Database.bookModel.count({
-        include: {
-          model: Database.libraryItemModel,
-          attributes: [],
+      const [bookCountFromDatabase, seriesCountFromDatabase, authorCountFromDatabase] = await Promise.all([
+        Database.bookModel.count({
+          include: {
+            model: Database.libraryItemModel,
+            attributes: [],
+            where: {
+              libraryId: libraryId
+            }
+          }
+        }),
+        Database.seriesModel.count({
           where: {
             libraryId: libraryId
           }
-        }
-      })
-
-      const seriesCountFromDatabase = await Database.seriesModel.count({
-        where: {
-          libraryId: libraryId
-        }
-      })
-
-      const authorCountFromDatabase = await Database.authorModel.count({
-        where: {
-          libraryId: libraryId
-        }
-      })
+        }),
+        Database.authorModel.count({
+          where: {
+            libraryId: libraryId
+          }
+        })
+      ])
 
       // To reduce the cold-start load time, first check if any library items, series,
       // or authors have an "updatedAt" timestamp since the last time the filter

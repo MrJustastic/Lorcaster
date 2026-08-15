@@ -339,7 +339,11 @@ class PodcastManager {
     if (!newEpisodes) {
       // Failed
       // Allow up to MaxFailedEpisodeChecks failed attempts before disabling auto download
-      if (!this.failedCheckMap[libraryItem.id]) this.failedCheckMap[libraryItem.id] = 0
+      if (!this.failedCheckMap[libraryItem.id]) {
+        const ids = Object.keys(this.failedCheckMap)
+        if (ids.length >= 200) delete this.failedCheckMap[ids[0]]
+        this.failedCheckMap[libraryItem.id] = 0
+      }
       this.failedCheckMap[libraryItem.id]++
       if (this.MaxFailedEpisodeChecks !== 0 && this.failedCheckMap[libraryItem.id] >= this.MaxFailedEpisodeChecks) {
         Logger.error(`[PodcastManager] runEpisodeCheck ${this.failedCheckMap[libraryItem.id]} failed attempts at checking episodes for "${libraryItem.media.title}" - disabling auto download`)

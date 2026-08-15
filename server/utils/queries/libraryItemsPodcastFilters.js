@@ -3,8 +3,9 @@ const Database = require('../../Database')
 const Logger = require('../../Logger')
 const { profile } = require('../../utils/profiler')
 const stringifySequelizeQuery = require('../stringifySequelizeQuery')
+const { LRUCache } = require('lru-cache')
 
-const countCache = new Map()
+const countCache = new LRUCache({ max: 500 })
 
 module.exports = {
   /**
@@ -369,45 +370,78 @@ module.exports = {
 
     const matchTitle = textSearchQuery.matchExpression('podcast.title')
     const matchAuthor = textSearchQuery.matchExpression('podcast.author')
+    const matchJsonValue = textSearchQuery.matchExpression('json_each.value')
+    const jsonReplacements = { libraryId: library.id, limit, offset }
 
-    // Search title, author, itunesId, itunesArtistId
-    const podcasts = await Database.podcastModel.findAll({
-      where: [
-        {
-          [Sequelize.Op.or]: [
-            Sequelize.literal(matchTitle),
-            Sequelize.literal(matchAuthor),
-            {
-              itunesId: {
-                [Sequelize.Op.substring]: query
+    const [podcasts, podcastEpisodes, [tagResults], [genreResults]] = await Promise.all([
+      Database.podcastModel.findAll({
+        where: [
+          {
+            [Sequelize.Op.or]: [
+              Sequelize.literal(matchTitle),
+              Sequelize.literal(matchAuthor),
+              {
+                itunesId: {
+                  [Sequelize.Op.substring]: query
+                }
+              },
+              {
+                itunesArtistId: {
+                  [Sequelize.Op.substring]: query
+                }
               }
-            },
-            {
-              itunesArtistId: {
-                [Sequelize.Op.substring]: query
-              }
+            ]
+          },
+          ...userPermissionPodcastWhere.podcastWhere
+        ],
+        replacements: userPermissionPodcastWhere.replacements,
+        include: [
+          {
+            model: Database.libraryItemModel,
+            where: {
+              libraryId: library.id
             }
-          ]
-        },
-        ...userPermissionPodcastWhere.podcastWhere
-      ],
-      replacements: userPermissionPodcastWhere.replacements,
-      include: [
-        {
-          model: Database.libraryItemModel,
-          where: {
-            libraryId: library.id
           }
-        }
-      ],
-      subQuery: false,
-      distinct: true,
-      limit,
-      offset
-    })
+        ],
+        subQuery: false,
+        distinct: true,
+        limit,
+        offset
+      }),
+      Database.podcastEpisodeModel.findAll({
+        where: [
+          Sequelize.literal(textSearchQuery.matchExpression('podcastEpisode.title')),
+          {
+            '$podcast.libraryItem.libraryId$': library.id
+          }
+        ],
+        replacements: userPermissionPodcastWhere.replacements,
+        include: [
+          {
+            model: Database.podcastModel,
+            where: [...userPermissionPodcastWhere.podcastWhere],
+            include: [
+              {
+                model: Database.libraryItemModel
+              }
+            ]
+          }
+        ],
+        distinct: true,
+        offset,
+        limit
+      }),
+      Database.sequelize.query(`SELECT value, count(*) AS numItems FROM podcasts p, libraryItems li, json_each(p.tags) WHERE json_valid(p.tags) AND ${matchJsonValue} AND p.id = li.mediaId AND li.libraryId = :libraryId GROUP BY value ORDER BY numItems DESC LIMIT :limit OFFSET :offset;`, {
+        replacements: jsonReplacements,
+        raw: true
+      }),
+      Database.sequelize.query(`SELECT value, count(*) AS numItems FROM podcasts p, libraryItems li, json_each(p.genres) WHERE json_valid(p.genres) AND ${matchJsonValue} AND p.id = li.mediaId AND li.libraryId = :libraryId GROUP BY value ORDER BY numItems DESC LIMIT :limit OFFSET :offset;`, {
+        replacements: jsonReplacements,
+        raw: true
+      })
+    ])
 
     const itemMatches = []
-
     for (const podcast of podcasts) {
       const libraryItem = podcast.libraryItem
       delete podcast.libraryItem
@@ -418,30 +452,6 @@ module.exports = {
       })
     }
 
-    // Search podcast episode title
-    const podcastEpisodes = await Database.podcastEpisodeModel.findAll({
-      where: [
-        Sequelize.literal(textSearchQuery.matchExpression('podcastEpisode.title')),
-        {
-          '$podcast.libraryItem.libraryId$': library.id
-        }
-      ],
-      replacements: userPermissionPodcastWhere.replacements,
-      include: [
-        {
-          model: Database.podcastModel,
-          where: [...userPermissionPodcastWhere.podcastWhere],
-          include: [
-            {
-              model: Database.libraryItemModel
-            }
-          ]
-        }
-      ],
-      distinct: true,
-      offset,
-      limit
-    })
     const episodeMatches = []
     for (const episode of podcastEpisodes) {
       const libraryItem = episode.podcast.libraryItem
@@ -455,41 +465,14 @@ module.exports = {
       })
     }
 
-    const matchJsonValue = textSearchQuery.matchExpression('json_each.value')
-
-    // Search tags
-    const tagMatches = []
-    const [tagResults] = await Database.sequelize.query(`SELECT value, count(*) AS numItems FROM podcasts p, libraryItems li, json_each(p.tags) WHERE json_valid(p.tags) AND ${matchJsonValue} AND p.id = li.mediaId AND li.libraryId = :libraryId GROUP BY value ORDER BY numItems DESC LIMIT :limit OFFSET :offset;`, {
-      replacements: {
-        libraryId: library.id,
-        limit,
-        offset
-      },
-      raw: true
-    })
-    for (const row of tagResults) {
-      tagMatches.push({
-        name: row.value,
-        numItems: row.numItems
-      })
-    }
-
-    // Search genres
-    const genreMatches = []
-    const [genreResults] = await Database.sequelize.query(`SELECT value, count(*) AS numItems FROM podcasts p, libraryItems li, json_each(p.genres) WHERE json_valid(p.genres) AND ${matchJsonValue} AND p.id = li.mediaId AND li.libraryId = :libraryId GROUP BY value ORDER BY numItems DESC LIMIT :limit OFFSET :offset;`, {
-      replacements: {
-        libraryId: library.id,
-        limit,
-        offset
-      },
-      raw: true
-    })
-    for (const row of genreResults) {
-      genreMatches.push({
-        name: row.value,
-        numItems: row.numItems
-      })
-    }
+    const tagMatches = tagResults.map((row) => ({
+      name: row.value,
+      numItems: row.numItems
+    }))
+    const genreMatches = genreResults.map((row) => ({
+      name: row.value,
+      numItems: row.numItems
+    }))
 
     return {
       podcast: itemMatches,
